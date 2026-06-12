@@ -68,11 +68,21 @@ export class IndexerController {
 				return this.renderRss(res, [], cat as string);
 			}
 
-			// If it's a TV search, add season/ep to query
-			if (t === 'tvsearch') {
-				if (season) queryStr += ` S${season.toString().padStart(2, '0')}`;
-				if (ep) queryStr += ` E${ep.toString().padStart(2, '0')}`;
-			}
+			// tvsearch: search by the title Sonarr put in `q` and nothing
+			// else. season/ep arrive as separate Torznab params, NOT inside
+			// `q` — appending them to the eD2k query (in any token form)
+			// only narrows it against the network's inconsistent episode
+			// naming and loses real content. The episode, language and
+			// quality matching is Sonarr's job: it parses each returned
+			// release name and rejects what doesn't fit (verified against
+			// Sonarr's search decision specs). So leave `q` as formatted and
+			// let the candidates flow back. (season/ep stay destructured for
+			// logging/clarity but are intentionally unused.)
+			//
+			// Trade-off: a tvsearch returns every episode's releases for the
+			// show. Automatic search is unaffected (only matches are grabbed);
+			// interactive search shows the non-matching ones greyed-out with a
+			// "Wrong episode" rejection — noisier list, but never grabbable.
 
 			// Radarr/Sonarr "Test" often sends 't=movie' or 't=search' without 'q'.
 			if (!queryStr.trim()) {
