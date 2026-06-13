@@ -16,6 +16,19 @@ export class AmulecmdService {
 		this.password = process.env.AMULE_PASSWORD || 'secret';
 	}
 
+	/**
+	 * Mask the EC password before logging. The amulecmd invocation embeds
+	 * `--password=<AMULE_PASSWORD>`, and Node's exec error carries the full
+	 * command in `.cmd`/`.message`, so logging the raw error leaked the password
+	 * to stderr on every amulecmd failure (a frequent condition when EC is down).
+	 * Replaces the literal password value AND any `--password=` flag value.
+	 */
+	private redactSecrets(value: unknown): string {
+		let s = value instanceof Error ? value.message : String(value);
+		if (this.password) s = s.split(this.password).join('***');
+		return s.replace(/(--password=)\S+/g, '$1***');
+	}
+
 	private async runCommand(cmd: string): Promise<string> {
 		// Set COLUMNS and TERM even if amulecmd 2.3.3 might not respect them for all commands,
 		// some future versions or other utils might.
@@ -26,7 +39,7 @@ export class AmulecmdService {
 			});
 			return stdout;
 		} catch (error: any) {
-			console.error('AmuleCmd Error:', error);
+			console.error('AmuleCmd Error:', this.redactSecrets(error));
 			// If amulecmd is missing (dev env), return mock data
 			if (error.code === 127 || error.message.includes('not found')) {
 				console.warn('amulecmd not found. Returning mock data.');
