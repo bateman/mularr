@@ -93,11 +93,40 @@ export class IndexerController {
 			try {
 				await this.mediaProviderService.startSearch(queryStr);
 
-				while (true) {
-					const searchStatus = await this.mediaProviderService.getSearchStatus();
-					console.log(`[Indexer] Search progress: ${Math.floor(searchStatus.progress * 100)}%`);
-					await new Promise((r) => setTimeout(r, 1000));
-					if (searchStatus.progress >= 1) break;
+				// Gather results until the set stops growing, not just until
+				// the EC "progress" hits 100%. progress reaches 1 as soon as
+				// the search is dispatched and the first responses land, but a
+				// global eD2k search keeps trickling results back for many
+				// seconds after that — returning at progress>=1 yields a small,
+				// non-deterministic early snapshot (observed: ~17 vs ~126 for
+				// the same query given more time), which silently drops
+				// long-tail releases (minority languages, rarer rips).
+				//
+				// Tuned for completeness ("fuller" over "faster"): poll the
+				// accumulating result set and only stop once its size has been
+				// stable across STABLE_POLLS consecutive polls AND the search
+				// reports done, or once MAX_WAIT_MS elapses. No early-exit on a
+				// result-count threshold — we want the full set, accepting up
+				// to ~MAX_WAIT_MS of latency on interactive searches (well
+				// within Sonarr/Radarr's request timeout).
+				const POLL_MS = 1500;
+				const MAX_WAIT_MS = 12000;
+				const STABLE_POLLS = 3;
+				const startedAt = Date.now();
+				let lastCount = -1;
+				let stable = 0;
+				while (Date.now() - startedAt < MAX_WAIT_MS) {
+					await new Promise((r) => setTimeout(r, POLL_MS));
+					const status = await this.mediaProviderService.getSearchStatus();
+					const current = (await this.mediaProviderService.getSearchResults()).list.length;
+					if (current === lastCount) {
+						stable++;
+						if (status.progress >= 1 && stable >= STABLE_POLLS) break;
+					} else {
+						stable = 0;
+					}
+					lastCount = current;
+					console.log(`[Indexer] Search progress: ${Math.floor(status.progress * 100)}%, results so far: ${current}`);
 				}
 
 				const results = await this.mediaProviderService.getSearchResults();
