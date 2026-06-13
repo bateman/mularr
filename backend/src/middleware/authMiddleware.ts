@@ -75,9 +75,18 @@ export function createAuthMiddleware(opts: AuthMiddlewareOptions = {}) {
 		}
 
 		console.warn(`[AuthMiddleware] Unauthorized request to ${req.method} ${req.path}`);
-		// DEBUG INFO
-		console.log('Headers:', req.headers);
-		console.log('Query:', req.query);
+		// Log which credential channels were PRESENT (booleans only), never their
+		// values — so a 401 stays debuggable ("cookie present but no apikey", etc.)
+		// without leaking secrets (apikey / SID cookie / Authorization) into stdout.
+		// This route 401s on every *arr poll until its apikey is corrected, so the
+		// old full headers/query dump would have flooded logs with live credentials.
+		console.log('[AuthMiddleware] credentials seen:', {
+			bearer: !!authHeader,
+			xApiKey: !!xApiKey,
+			sidCookie: /(?:^|;\s*)SID=/.test(req.headers.cookie || ''),
+			queryApiKey: !!queryApiKey,
+			sessionAllowed: allowSession,
+		});
 
 		res.status(401).json({ error: 'Unauthorized' });
 	};
