@@ -28,7 +28,7 @@ import { mediaProviderRoutes } from './routes/mediaProviderRoutes';
 import { statsRoutes } from './routes/statsRoutes';
 import { authRoutes } from './routes/authRoutes';
 import { blacklistRoutes } from './routes/blacklistRoutes';
-import { authMiddleware } from './middleware/authMiddleware';
+import { authMiddleware, apiKeyOnlyAuthMiddleware } from './middleware/authMiddleware';
 import { AuthService } from './services/AuthService';
 
 console.log(`Starting Mularr v${__APP_MANIFEST__.version}...`);
@@ -109,10 +109,12 @@ async function main() {
 
 	// -- Setup routes -------------------------------------------------------------
 
-	// Wraps a router with authMiddleware so all its routes are protected
-	const withAuth = (router: express.Router): express.Router => {
+	// Wraps a router with an auth middleware so all its routes are protected.
+	// Defaults to the full credential set; pass a specific middleware (e.g.
+	// apiKeyOnlyAuthMiddleware) to override per-route.
+	const withAuth = (router: express.Router, mw: express.RequestHandler = authMiddleware): express.Router => {
 		const wrapper = express.Router();
-		wrapper.use(authMiddleware);
+		wrapper.use(mw);
 		wrapper.use(router);
 		return wrapper;
 	};
@@ -125,7 +127,7 @@ async function main() {
 	app.use('/api/extensions', withAuth(extensionsRoutes()));
 	app.use('/api/telegram', withAuth(telegramRoutes()));
 	app.use('/api/as-qbittorrent/api/v2', qbittorrentRoutes()); // manages its own auth internally
-	app.use('/api/as-torznab-indexer', withAuth(indexerRoutes())); // Torznab indexer for Sonarr/Radarr/Lidarr
+	app.use('/api/as-torznab-indexer', withAuth(indexerRoutes(), apiKeyOnlyAuthMiddleware)); // Torznab indexer: API-key-only auth (no qBit session cookie)
 	app.use('/api/blacklist', withAuth(blacklistRoutes()));
 
 	// -- Serve static files from the 'public' folder ------------------------------
