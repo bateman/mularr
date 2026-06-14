@@ -12,13 +12,11 @@ function parseSidCookie(req: Request): string | undefined {
 }
 
 export interface AuthMiddlewareOptions {
-	// When false, SESSION credentials are rejected — the qBit SID cookie and
-	// Bearer session-JWTs — leaving only the API key itself (?apikey= query,
-	// X-Api-Key header, or Bearer <apikey>). Used for the Torznab indexer,
-	// which per the Newznab/Torznab contract authenticates by API key only.
-	// Accepting the qBit login cookie there let a WRONG indexer apikey pass
-	// whenever a download-client session cookie existed for the same host
-	// (Sonarr/Radarr cache cookies per-host and send them on indexer requests).
+	// When false, reject session credentials (qBit SID cookie + Bearer
+	// session-JWTs) and accept only the API key. Used for the Torznab indexer,
+	// which per the Newznab/Torznab contract authenticates by API key only:
+	// accepting the qBit cookie there let a wrong apikey pass whenever an *arr
+	// download-client session cookie existed for the same host.
 	allowSession?: boolean;
 }
 
@@ -75,11 +73,7 @@ export function createAuthMiddleware(opts: AuthMiddlewareOptions = {}) {
 		}
 
 		console.warn(`[AuthMiddleware] Unauthorized request to ${req.method} ${req.path}`);
-		// Log which credential channels were PRESENT (booleans only), never their
-		// values — so a 401 stays debuggable ("cookie present but no apikey", etc.)
-		// without leaking secrets (apikey / SID cookie / Authorization) into stdout.
-		// This route 401s on every *arr poll until its apikey is corrected, so the
-		// old full headers/query dump would have flooded logs with live credentials.
+		// Log presence only, never the values — don't leak apikey/cookie/Authorization.
 		console.log('[AuthMiddleware] credentials seen:', {
 			bearer: !!authHeader,
 			xApiKey: !!xApiKey,
@@ -92,10 +86,8 @@ export function createAuthMiddleware(opts: AuthMiddlewareOptions = {}) {
 	};
 }
 
-// Default: full credential set incl. session cookie/JWT — the qBit-compat API,
-// the web UI, and mularr's own API routes all rely on the session cookie.
+// Default: accepts the session cookie/JWT (qBit-compat API, web UI, mularr API).
 export const authMiddleware = createAuthMiddleware();
 
-// API-key-only — rejects the qBit session cookie/JWT so a wrong apikey always
-// 401s. Used for the Torznab indexer route.
+// API-key-only — rejects the session cookie/JWT. Used for the Torznab indexer.
 export const apiKeyOnlyAuthMiddleware = createAuthMiddleware({ allowSession: false });
