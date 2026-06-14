@@ -72,18 +72,15 @@ export class IndexerController {
 				return this.renderRss(res, [], cat as string);
 			}
 
-			// tvsearch: season/ep come as separate params. Both back-ends match
+			// tvsearch: season/ep arrive as separate params. Both back-ends match
 			// whole tokens and read uppercase OR as boolean, so OR the two common
-			// episode spellings (NxMM and SnnEmm). Rarer forms are missed; the
-			// *arr re-parses release names and filters anyway.
-			if (t === 'tvsearch' && season !== undefined && ep !== undefined) {
-				const s = parseInt(season as string, 10);
-				const e = parseInt(ep as string, 10);
-				if (!Number.isNaN(s) && !Number.isNaN(e)) {
-					const pad2 = (n: number) => String(n).padStart(2, '0');
-					const title = queryStr;
-					queryStr = `${title} ${s}x${pad2(e)} OR ${title} S${pad2(s)}E${pad2(e)}`;
-				}
+			// spellings (NxMM, SnnEmm); rarer forms fall to the *arr's own filter.
+			if (t === 'tvsearch' && typeof season === 'string' && typeof ep === 'string' && /^\d+$/.test(season) && /^\d+$/.test(ep)) {
+				const s = parseInt(season, 10);
+				const e = parseInt(ep, 10);
+				const pad2 = (n: number) => String(n).padStart(2, '0');
+				const title = queryStr;
+				queryStr = `${title} ${s}x${pad2(e)} OR ${title} S${pad2(s)}E${pad2(e)}`;
 			}
 
 			try {
