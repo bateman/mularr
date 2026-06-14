@@ -26,35 +26,25 @@ COPY backend/ ./
 COPY app-manifest.json ../
 RUN npm run build
 
+# Remove devDependencies from node_modules before copying to production image
+RUN npm prune --omit=dev
+
 # Stage 3: Production Image
-FROM node:24-trixie
+FROM node:24-trixie-slim
 
 WORKDIR /app
-
-# Configurar Locales para soportar UTF-8 (tildes, ñ, etc)
-RUN apt-get update && apt-get install -y --no-install-recommends locales \
-    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
-    && locale-gen en_US.UTF-8 \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV LANG=en_US.UTF-8 \
-    LANGUAGE=en_US:en \
-    LC_ALL=en_US.UTF-8
-
-# Compile and install aMule from source (disabled: using apt install above)
-# COPY build-amule.sh /tmp/build-amule.sh
-# RUN chmod +x /tmp/build-amule.sh && /tmp/build-amule.sh && rm /tmp/build-amule.sh
 
 # Install tini; install aMule 3.0.0 via shared script
 COPY install-amule-gh-release.sh /tmp/install-amule.sh
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tini \
-    && bash /tmp/install-amule.sh 3.0.0 \
-    && rm /tmp/install-amule.sh \
-    && rm -rf /var/lib/apt/lists/*
+	tini \
+	procps \
+	&& bash /tmp/install-amule.sh 3.0.0 \
+	&& rm /tmp/install-amule.sh \
+	&& rm -rf /var/lib/apt/lists/*
 
 COPY backend/package*.json ./backend/
-RUN cd backend && npm install --omit=dev
+COPY --from=backend-builder /app/backend/node_modules ./backend/node_modules
 
 # Copy backend build results
 COPY --from=backend-builder /app/backend/dist ./backend/dist

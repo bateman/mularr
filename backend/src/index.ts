@@ -127,7 +127,7 @@ async function main() {
 	app.use('/api/extensions', withAuth(extensionsRoutes()));
 	app.use('/api/telegram', withAuth(telegramRoutes()));
 	app.use('/api/as-qbittorrent/api/v2', qbittorrentRoutes()); // manages its own auth internally
-	app.use('/api/as-torznab-indexer', withAuth(indexerRoutes(), apiKeyOnlyAuthMiddleware)); // Torznab indexer: API-key-only auth (no qBit session cookie)
+	app.use('/api/as-torznab-indexer', withAuth(indexerRoutes(), apiKeyOnlyAuthMiddleware)); // Torznab indexer for Sonarr/Radarr/Lidarr: API-key-only auth (no qBit session cookie)
 	app.use('/api/blacklist', withAuth(blacklistRoutes()));
 
 	// -- Serve static files from the 'public' folder ------------------------------

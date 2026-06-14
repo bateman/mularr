@@ -25,8 +25,8 @@ INSTALL_DIR="/opt/amule"
 
 echo "Installing aMule ${AMULE_VERSION} (${AMULE_ARCH})..."
 
-# Ensure wget is available
-apt-get install -y --no-install-recommends wget
+# Ensure wget and ca-certificates are available (needed for HTTPS download)
+apt-get install -y --no-install-recommends ca-certificates wget
 
 # Download AppImage
 wget -q --show-progress -O "${APPIMAGE_PATH}" "${APPIMAGE_URL}"
@@ -56,5 +56,59 @@ for bin in amuled amulecmd; do
         exit 1
     fi
 done
+
+# Remove unnecessary files from the extracted AppImage to reduce image size
+rm -rf \
+    "${INSTALL_DIR}/usr/share/doc" \
+    "${INSTALL_DIR}/usr/share/man" \
+    "${INSTALL_DIR}/usr/share/locale" \
+    "${INSTALL_DIR}/usr/share/icons" \
+    "${INSTALL_DIR}/usr/share/applications" \
+    "${INSTALL_DIR}/usr/share/pixmaps" \
+    "${INSTALL_DIR}"/*.desktop \
+    "${INSTALL_DIR}"/.DirIcon
+
+# Remove GUI-only binaries (only amuled and amulecmd are needed in headless mode)
+rm -f \
+    "${INSTALL_DIR}/usr/bin/amule" \
+    "${INSTALL_DIR}/usr/bin/amulegui" \
+    "${INSTALL_DIR}/usr/bin/amuleweb" \
+    "${INSTALL_DIR}/usr/bin/wxcas" \
+    "${INSTALL_DIR}/usr/bin/alc" \
+    "${INSTALL_DIR}/usr/bin/alcc" \
+    "${INSTALL_DIR}/usr/bin/cas"
+
+# Remove GUI-only libraries not needed by amuled/amulecmd
+rm -f \
+    "${INSTALL_DIR}/usr/lib/libgtk-3.so"* \
+    "${INSTALL_DIR}/usr/lib/libgdk-3.so"* \
+    "${INSTALL_DIR}/usr/lib/librsvg-2.so"* \
+    "${INSTALL_DIR}/usr/lib/libicudata.so"* \
+    "${INSTALL_DIR}/usr/lib/libicuuc.so"* \
+    "${INSTALL_DIR}/usr/lib/libepoxy.so"* \
+    "${INSTALL_DIR}/usr/lib/libcairo.so"* \
+    "${INSTALL_DIR}/usr/lib/libcairo-gobject.so"* \
+    "${INSTALL_DIR}/usr/lib/libpango"* \
+    "${INSTALL_DIR}/usr/lib/libatk"* \
+    "${INSTALL_DIR}/usr/lib/libatspi.so"* \
+    "${INSTALL_DIR}/usr/lib/libgdk_pixbuf"* \
+    "${INSTALL_DIR}/usr/lib/libX"* \
+    "${INSTALL_DIR}/usr/lib/libwayland"* \
+    "${INSTALL_DIR}/usr/lib/libxkbcommon.so"* \
+    "${INSTALL_DIR}/usr/lib/libxcb"* \
+    "${INSTALL_DIR}/usr/lib/libayatana"* \
+    "${INSTALL_DIR}/usr/lib/libdbusmenu"* \
+    "${INSTALL_DIR}/usr/lib/libcolord.so"* \
+    "${INSTALL_DIR}/usr/lib/libcups.so"* \
+    "${INSTALL_DIR}/usr/lib/libgd.so"* \
+    "${INSTALL_DIR}/usr/lib/libwebp.so"* \
+    "${INSTALL_DIR}/usr/lib/libtiff.so"* \
+    "${INSTALL_DIR}/usr/lib/libjpeg.so"* \
+    "${INSTALL_DIR}/usr/lib/libpng16.so"* \
+    "${INSTALL_DIR}/usr/lib/libgraphite2.so"*
+rm -rf "${INSTALL_DIR}/usr/lib/girepository-1.0"
+
+# Remove wget and ca-certificates; they were only needed for the download
+apt-get purge -y --auto-remove ca-certificates wget
 
 echo "aMule ${AMULE_VERSION} installed."

@@ -1,28 +1,27 @@
 import { createHash } from 'crypto';
 
 export function hashToBtih(hash: string): string {
-	// Normalize to lowercase before hashing so the btih is identical whether it
-	// is computed from a search-result hash (used to build the magnet Sonarr
-	// grabs) or from a transfer hash (reported in torrents/info). Both must hash
-	// to the same 40-hex id or Sonarr cannot reconcile the grab with the
-	// download. No-op for the existing magnet path, whose input is already
+	// Lowercase before hashing so the btih is identical whether computed from a
+	// search-result hash (the magnet Sonarr grabs) or a transfer hash (reported
+	// in torrents/info) — both must hash to the same 40-hex id or Sonarr can't
+	// reconcile the grab with the download. No-op for the magnet path, already
 	// lowercase hex.
 	const btih = createHash('sha1').update(hash.toLowerCase()).digest('hex'); // 40 chars hex
 	return btih;
 }
 
 /**
- * True if `clientHash` — a hash received from a qBittorrent API client such as
- * Sonarr/Radarr — refers to the transfer identified by eD2k hash `ed2kHash`.
- * Clients only ever know the fake 40-hex btih we advertise (sha1 of the eD2k
- * hash), which is one-way, so the match is done forward: the client hash
- * matches if it equals the eD2k hash directly (32-hex — internal/legacy
- * callers) or its btih (40-hex). Case-insensitive.
+ * True if `clientHash` (from a qBittorrent client like Sonarr/Radarr) refers to
+ * the transfer `mularrHash`. The transfer hash is provider-specific — a 32-hex
+ * eD2k hash for aMule, or a custom hash minted for Telegram/future providers —
+ * so never assume eD2k. Clients only know the fake 40-hex btih we advertise
+ * (sha1 of the hash, one-way), so match forward: clientHash equals the transfer
+ * hash directly or its btih. Case-insensitive.
  */
-export function clientHashMatchesEd2k(ed2kHash: string | undefined, clientHash: string): boolean {
-	if (!ed2kHash || !clientHash) return false;
+export function clientHashMatchesMularrHash(mularrHash: string | undefined, clientHash: string): boolean {
+	if (!mularrHash || !clientHash) return false;
 	const c = clientHash.toLowerCase();
-	return ed2kHash.toLowerCase() === c || hashToBtih(ed2kHash) === c;
+	return mularrHash.toLowerCase() === c || hashToBtih(mularrHash) === c;
 }
 
 export function hashToFakeMagnet(hash: string): string {
