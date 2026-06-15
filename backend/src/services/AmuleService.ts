@@ -84,17 +84,14 @@ export class AmuleService {
 	private readonly host = process.env.AMULE_HOST || 'localhost';
 	private readonly port = process.env.AMULE_PORT || '4712';
 	private readonly password = process.env.AMULE_PASSWORD || 'secret';
-	// timeout: this is amule-ec-client's SOCKET INACTIVITY timeout, not a
-	// per-request deadline. It must stay ABOVE the EC poll cadence (the
-	// monitoring service polls every ~10s) — otherwise the long-lived EC
-	// socket idles out between polls, gets marked disconnected, and the next
-	// request reconnects + re-runs the salt auth handshake. Under concurrent
-	// polls (getStats + getTransfers) that reconnect/auth races on the
-	// library's single FIFO socket and floods 'Authentication failed: invalid
-	// password'. 30s keeps the connection alive in normal use (no churn) while
-	// still bounding a genuinely stuck/idle socket — and amuled is on
-	// localhost, so a real outage surfaces fast as ECONNREFUSED or a clean
-	// close, not the half-open hang a short timeout was guarding against.
+	// timeout: this is amule-ec-client's socket INACTIVITY timeout, not a
+	// per-request deadline, so keep it above the ~10s EC poll cadence. Too short
+	// and the long-lived socket idles out between polls, reconnects, and re-runs
+	// the salt auth handshake; under concurrent polls (getStats + getTransfers)
+	// that races on the library's single FIFO socket and floods 'Authentication
+	// failed: invalid password'. 30s keeps it alive in normal use while still
+	// bounding a stuck socket — amuled is on localhost, so a real outage surfaces
+	// fast as ECONNREFUSED or a clean close.
 	private readonly client = new AmuleClient({ host: this.host, port: parseInt(this.port), password: this.password, timeout: 30000 });
 	private readonly amulecmdService: AmulecmdService | null = null;
 	private db: MainDB;

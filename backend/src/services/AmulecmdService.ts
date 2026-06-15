@@ -17,11 +17,8 @@ export class AmulecmdService {
 	}
 
 	/**
-	 * Mask the EC password before logging. The amulecmd invocation embeds
-	 * `--password=<AMULE_PASSWORD>`, and Node's exec error carries the full
-	 * command in `.cmd`/`.message`, so logging the raw error leaked the password
-	 * to stderr on every amulecmd failure (a frequent condition when EC is down).
-	 * Replaces the literal password value AND any `--password=` flag value.
+	 * Mask the EC password before logging: Node's exec error embeds the full
+	 * `amulecmd --password=...` command, so logging it raw leaks the password.
 	 */
 	private redactSecrets(value: unknown): string {
 		let s = value instanceof Error ? value.message : String(value);
