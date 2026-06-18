@@ -83,6 +83,10 @@ export class IndexerController {
 				queryStr = `${title} ${s}x${pad2(e)} OR ${title} S${pad2(s)}E${pad2(e)}`;
 			}
 
+			// Releases often drop apostrophes (e.g. "Widow's Bay" -> "Widows Bay").
+			// Done here so every search type benefits.
+			queryStr = this.expandApostrophes(queryStr);
+
 			try {
 				await this.mediaProviderService.startSearch(queryStr);
 
@@ -134,6 +138,11 @@ export class IndexerController {
 
 		res.status(400).send('Unknown action');
 	};
+
+	private expandApostrophes(query: string): string {
+		const stripped = query.replace(/['’]/g, '');
+		return stripped === query || stripped.trim() === '' ? query : `${query} OR ${stripped}`;
+	}
 
 	private getCapabilities(res: Response) {
 		res.header('Content-Type', 'application/xml');
