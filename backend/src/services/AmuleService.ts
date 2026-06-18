@@ -142,8 +142,8 @@ export class AmuleService {
 				isHighID,
 				raw: `Download: ${stats.downloadSpeed} bytes/s\nUpload: ${stats.uploadSpeed} bytes/s`,
 			};
-		} catch (error) {
-			console.error('EC Client Stats Error:', error);
+		} catch (error: any) {
+			console.error('❌ EC Client Stats Error:', error.message);
 			// Fallback to amulecmd if EC fails
 			if (this.amulecmdService) {
 				return this.amulecmdService.getStats();
@@ -168,8 +168,8 @@ export class AmuleService {
 			}
 
 			return { list: servers, connectedServer };
-		} catch (error) {
-			console.error('EC Client Servers Error:', error);
+		} catch (error: any) {
+			console.error('❌ EC Client Servers Error:', error.message);
 			if (this.amulecmdService) {
 				return this.amulecmdService.getServers();
 			}
@@ -181,7 +181,7 @@ export class AmuleService {
 		try {
 			await this.client.connectToServer(ip, port);
 		} catch (error) {
-			console.error('EC Client Connect Error:', error);
+			console.error('❌ EC Client Connect Error:', error);
 			throw error;
 		}
 	}
@@ -190,7 +190,7 @@ export class AmuleService {
 		try {
 			await this.client.disconnectFromServer();
 		} catch (error) {
-			console.error('EC Client Disconnect Error:', error);
+			console.error('❌ EC Client Disconnect Error:', error);
 			throw error;
 		}
 	}
@@ -209,8 +209,8 @@ export class AmuleService {
 				path: file.filePath,
 			}));
 			return { raw: `Shared Files (${files.length})`, list: list };
-		} catch (error) {
-			console.error('EC Client Shared Files Error:', error);
+		} catch (error: any) {
+			console.error('❌ EC Client Shared Files Error:', error.message);
 		}
 		return { raw: 'Error getting shared files', list: [] };
 	}
@@ -352,8 +352,8 @@ export class AmuleService {
 				list: await Promise.all(transfers),
 				categories: categories,
 			};
-		} catch (error) {
-			console.error('EC Client Transfers Error:', error);
+		} catch (error: any) {
+			console.error('❌ EC Client Transfers Error:', error.message);
 			// if (this.amulecmdService) {
 			// 	return this.amulecmdService.getTransfers();
 			// }
@@ -473,7 +473,7 @@ export class AmuleService {
 				list: uploads,
 			};
 		} catch (e: any) {
-			console.error('Get Upload Queue Error:', e);
+			console.error('❌ EC Client Upload Queue Error:', e.message);
 			return { raw: 'Error fetching upload queue', list: [] };
 			// No fallback for uploads since amulecmd doesn't provide this info
 			// if (this.amulecmdService) {
@@ -506,7 +506,7 @@ export class AmuleService {
 				console.log(`Added download for ed2k link`);
 			}
 		} catch (e) {
-			console.warn('EC Client failed to add download, falling back to amulecmd:', e);
+			console.warn('❌ EC Client failed to add download, falling back to amulecmd:', e);
 
 			if (this.amulecmdService) {
 				this.amulecmdService.addDownload(link);
@@ -533,7 +533,7 @@ export class AmuleService {
 			await this.client.deleteDownload(Buffer.from(hash, 'hex'));
 			// Remove from DB if successfully deleted from client
 		} catch (e) {
-			console.warn('EC Client removeDownload failed, falling back to amulecmd:', e);
+			console.warn('❌ EC Client removeDownload failed, falling back to amulecmd:', e);
 
 			if (this.amulecmdService) {
 				await this.amulecmdService.removeDownload(hash);
@@ -601,8 +601,8 @@ export class AmuleService {
 		try {
 			const cats = await this.client.getCategories();
 			return cats || [];
-		} catch (e) {
-			console.error('EC Client getCategories Error:', e);
+		} catch (e: any) {
+			console.error('❌ EC Client getCategories Error:', e.message);
 			// No reliable fallback via amulecmd - return empty list
 			return [];
 		}
