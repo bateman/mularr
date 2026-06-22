@@ -28,7 +28,7 @@ import { mediaProviderRoutes } from './routes/mediaProviderRoutes';
 import { statsRoutes } from './routes/statsRoutes';
 import { authRoutes } from './routes/authRoutes';
 import { blacklistRoutes } from './routes/blacklistRoutes';
-import { authMiddleware, apiKeyOnlyAuthMiddleware } from './middleware/authMiddleware';
+import { apiKeyOnlyAuthMiddleware, uiAuthMiddleware } from './middleware/authMiddleware';
 import { AuthService } from './services/AuthService';
 
 console.log(`Starting Mularr v${__APP_MANIFEST__.version}...`);
@@ -45,11 +45,14 @@ app.use(express.urlencoded({ extended: true }));
 // Initialize Auth Service (must be first so middleware can use it)
 const authService = new AuthService();
 container.register(AuthService, authService);
-if (authService.isAuthEnabled()) {
-	console.log('[Auth] Authentication is enabled.');
+if (authService.isInteractiveLoginEnabled()) {
+	console.log('[Auth] Interactive login ENABLED (AUTH_USERNAME/AUTH_PASSWORD set).');
 } else {
-	console.log('[Auth] No credentials configured — running in open-access mode.');
+	console.log(
+		'[Auth] Interactive login DISABLED (AUTH_USERNAME/AUTH_PASSWORD not set) — serve only behind a trusted authenticating reverse proxy.',
+	);
 }
+console.log(`[Auth] API_KEY auth on /api/as-* is ${authService.isApiKeyAuthEnabled() ? 'ENABLED' : 'DISABLED'}.`);
 
 async function main() {
 	// Initialize Main DB
@@ -110,9 +113,10 @@ async function main() {
 	// -- Setup routes -------------------------------------------------------------
 
 	// Wraps a router with an auth middleware so all its routes are protected.
-	// Defaults to the full credential set; pass a specific middleware (e.g.
-	// apiKeyOnlyAuthMiddleware) to override per-route.
-	const withAuth = (router: express.Router, mw: express.RequestHandler = authMiddleware): express.Router => {
+	// UI routes default to uiAuthMiddleware (gated on interactive login, so they
+	// are open when AUTH_USERNAME/PASSWORD are unset). Pass a specific middleware
+	// (e.g. apiKeyOnlyAuthMiddleware) to override per-route.
+	const withAuth = (router: express.Router, mw: express.RequestHandler = uiAuthMiddleware): express.Router => {
 		const wrapper = express.Router();
 		wrapper.use(mw);
 		wrapper.use(router);

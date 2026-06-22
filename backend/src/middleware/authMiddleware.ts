@@ -18,15 +18,25 @@ export interface AuthMiddlewareOptions {
 	// accepting the qBit cookie there let a wrong apikey pass whenever an *arr
 	// download-client session cookie existed for the same host.
 	allowSession?: boolean;
+	// Which auth posture decides whether this middleware enforces anything:
+	//   'api'         → enforce when any app credential is set (isAuthEnabled).
+	//                   Used for the M2M surfaces (qBit + Torznab).
+	//   'interactive' → enforce only when interactive login is enabled.
+	//                   Used for the web-UI routes, so they are served openly
+	//                   (behind a trusted proxy) when AUTH_USERNAME/PASSWORD are
+	//                   unset, even if API_KEY is configured.
+	scope?: 'api' | 'interactive';
 }
 
 export function createAuthMiddleware(opts: AuthMiddlewareOptions = {}) {
 	const allowSession = opts.allowSession !== false; // default: allow (qBit API, web UI)
+	const scope = opts.scope ?? 'api';
 
 	return function authMiddleware(req: Request, res: Response, next: NextFunction): void {
 		const authService = container.get(AuthService);
 
-		if (!authService.isAuthEnabled()) {
+		const active = scope === 'interactive' ? authService.isInteractiveLoginEnabled() : authService.isAuthEnabled();
+		if (!active) {
 			return next();
 		}
 
@@ -86,8 +96,13 @@ export function createAuthMiddleware(opts: AuthMiddlewareOptions = {}) {
 	};
 }
 
-// Default: accepts the session cookie/JWT (qBit-compat API, web UI, mularr API).
+// Default: accepts the session cookie/JWT (qBit-compat API). Enforces whenever
+// any app credential is configured.
 export const authMiddleware = createAuthMiddleware();
 
 // API-key-only — rejects the session cookie/JWT. Used for the Torznab indexer.
 export const apiKeyOnlyAuthMiddleware = createAuthMiddleware({ allowSession: false });
+
+// Web-UI routes — gated on interactive login only. When AUTH_USERNAME/PASSWORD
+// are unset the UI routes are served openly (M2M API_KEY auth is unaffected).
+export const uiAuthMiddleware = createAuthMiddleware({ scope: 'interactive' });

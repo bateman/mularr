@@ -82,6 +82,43 @@ To configure as download client use the following settings:
 - **Type**: qBittorrent
 - **URL Base**: `/api/as-qbittorrent`
 
+---
+
+## Authentication
+
+Mularr separates **interactive login** (the web UI's own login page) from
+**API_KEY (machine-to-machine) auth** used by the Torznab indexer and the
+qBittorrent-compatible client. The two are controlled independently:
+
+| Variable        | Purpose                                                                                                                                                                  |
+| :-------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_USERNAME` | Username for the web UI login page. Interactive login is enabled **only when both `AUTH_USERNAME` and `AUTH_PASSWORD` are set** (non-empty).                              |
+| `AUTH_PASSWORD` | Password for the web UI login page. Also accepted as the qBittorrent API password.                                                                                       |
+| `API_KEY`       | Machine-to-machine key for `/api/as-torznab-indexer*` and `/api/as-qbittorrent*`. Enforced whenever it is set, independently of interactive login. Also usable as the qBittorrent API password (with any username). |
+| `JWT_SECRET`    | Secret used to sign session JWTs. If unset, a random secret is generated on startup (existing sessions are invalidated on restart).                                      |
+
+### Behavior matrix
+
+| `AUTH_USERNAME` + `AUTH_PASSWORD` | `API_KEY` | Web UI login page | Web UI / admin API           | `/api/as-*` (M2M)        |
+| :-------------------------------- | :-------- | :---------------- | :--------------------------- | :----------------------- |
+| set                               | set       | shown             | requires login session       | requires `API_KEY`/session |
+| set                               | unset     | shown             | requires login session       | requires login session   |
+| unset                             | set       | **hidden**        | **open (no app-level gate)** | requires `API_KEY`       |
+| unset                             | unset     | hidden            | open                         | open                     |
+
+When `AUTH_USERNAME`/`AUTH_PASSWORD` are unset, Mularr serves the web UI with no
+login page or session gate, so it can run behind an external authenticating
+reverse proxy / SSO (e.g. Traefik + Authelia) without a double login — while
+`API_KEY` keeps the Torznab and qBittorrent endpoints protected for Sonarr/Radarr.
+
+> [!WARNING]
+> **Disabling interactive login leaves the web UI and admin API
+> unauthenticated at the application level.** Anyone who can reach the port
+> directly has full UI/admin access. Only run in this mode when the container
+> port is **NOT published to any host** and all access is forced through a
+> trusted authenticating reverse proxy. Do not expose the port directly to a
+> network when interactive login is disabled.
+
 ## Tech Stack
 
 Mularr is built primarily with TypeScript.
