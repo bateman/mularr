@@ -106,6 +106,12 @@ qBittorrent-compatible client. The two are controlled independently:
 | unset                             | set       | **hidden**        | **open (no app-level gate)** | requires `API_KEY`       |
 | unset                             | unset     | hidden            | open                         | open                     |
 
+> **M2M column detail:** the two M2M surfaces differ in what they accept. The
+> **Torznab indexer** (`/api/as-torznab-indexer*`) is **API-key only** — it
+> rejects login-session cookies/JWTs (per the Newznab/Torznab contract). The
+> **qBittorrent client** (`/api/as-qbittorrent*`) accepts either the `API_KEY`
+> or a login session. In both cases, when `API_KEY` is set it is enforced.
+
 When `AUTH_USERNAME`/`AUTH_PASSWORD` are unset, Mularr serves the web UI with no
 login page or session gate, so it can run behind an external authenticating
 reverse proxy / SSO (e.g. Traefik + Authelia) without a double login — while
