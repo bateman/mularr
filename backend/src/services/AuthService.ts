@@ -6,6 +6,7 @@ export interface AuthStatus {
 	enabled: boolean;
 	hasCredentials: boolean;
 	hasApiKey: boolean;
+	interactiveLoginEnabled: boolean;
 }
 
 export class AuthService {
@@ -29,10 +30,39 @@ export class AuthService {
 				console.warn('[AuthService] JWT_SECRET not set — session tokens will be invalidated on restart.');
 			}
 		}
+
+		// Partial interactive credentials are ambiguous: interactive login needs
+		// BOTH username and password, so a half-configured pair silently disables
+		// the login UI. Warn so it isn't mistaken for an enabled login.
+		if (!!this.username !== !!this.password) {
+			console.warn(
+				'[AuthService] Only one of AUTH_USERNAME/AUTH_PASSWORD is set — interactive login stays DISABLED. Set both to enable it.',
+			);
+		}
 	}
 
+	/**
+	 * Interactive login (the web UI login page + session gate) is enabled only
+	 * when BOTH AUTH_USERNAME and AUTH_PASSWORD are set. When disabled, the web
+	 * UI is served without a login page — intended to run behind a trusted
+	 * authenticating reverse proxy / SSO that handles human auth.
+	 */
+	isInteractiveLoginEnabled(): boolean {
+		return !!(this.username && this.password);
+	}
+
+	/** API_KEY (machine-to-machine) auth on the /api/as-* surfaces. */
+	isApiKeyAuthEnabled(): boolean {
+		return !!this.apiKey;
+	}
+
+	/**
+	 * Whether any app-level credential is configured. Gates the M2M middlewares
+	 * and the qBittorrent open-mode fallback. True when API_KEY is set or when
+	 * interactive login is fully configured.
+	 */
 	isAuthEnabled(): boolean {
-		return !!(this.username || this.apiKey);
+		return this.isApiKeyAuthEnabled() || this.isInteractiveLoginEnabled();
 	}
 
 	getStatus(): AuthStatus {
@@ -40,6 +70,7 @@ export class AuthService {
 			enabled: this.isAuthEnabled(),
 			hasCredentials: !!(this.username && this.password),
 			hasApiKey: !!this.apiKey,
+			interactiveLoginEnabled: this.isInteractiveLoginEnabled(),
 		};
 	}
 

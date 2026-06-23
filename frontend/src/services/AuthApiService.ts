@@ -2,6 +2,7 @@ export interface AuthStatus {
 	enabled: boolean;
 	hasCredentials: boolean;
 	hasApiKey: boolean;
+	interactiveLoginEnabled: boolean;
 }
 
 const TOKEN_KEY = 'mularr.auth.token';

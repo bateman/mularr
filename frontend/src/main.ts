@@ -28,14 +28,17 @@ const mountApp = () => {
 
 (async () => {
 	const authService = services.get(AuthApiService);
-	let status = { enabled: false, hasCredentials: false, hasApiKey: false };
+	let status = { enabled: false, hasCredentials: false, hasApiKey: false, interactiveLoginEnabled: false };
 	try {
 		status = await authService.getStatus();
 	} catch {
 		// If we can't reach the backend, proceed and let the app handle errors
 	}
 
-	if (status.enabled && !authService.isLoggedIn()) {
+	// Show the login page only when interactive login is enabled (both
+	// AUTH_USERNAME and AUTH_PASSWORD set). When disabled, the UI is served
+	// openly — mularr expects to sit behind a trusted authenticating proxy.
+	if (status.interactiveLoginEnabled && !authService.isLoggedIn()) {
 		appendChild(document.body, LoginView({ onLogin: mountApp }));
 	} else {
 		mountApp();
