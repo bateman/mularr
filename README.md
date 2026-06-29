@@ -125,6 +125,73 @@ reverse proxy / SSO (e.g. Traefik + Authelia) without a double login — while
 > trusted authenticating reverse proxy. Do not expose the port directly to a
 > network when interactive login is disabled.
 
+---
+
+## Tuning aMule for your connection
+
+All of these settings live in the **Settings** view (written to `amule.conf` and
+applied on save — no image rebuild needed). The defaults are conservative; adjust
+them to your line and connection type.
+
+### HighID vs LowID
+
+> [!IMPORTANT]
+> Your **connection ID is the single biggest factor** in performance — more so
+> than your bandwidth.
+
+- **HighID** — aMule's TCP port is reachable from the internet. Peers can connect
+  to you and you can use every source. This is what you want.
+- **LowID** — the port is not reachable (firewall/NAT/CGNAT, or a VPN without port
+  forwarding). You can only connect to HighID peers and cannot accept incoming
+  connections, which shrinks your source pool and speed regardless of how fast
+  your line is.
+
+To get HighID, make the aMule **TCP port** reachable:
+
+- **Direct**: forward the TCP (and UDP) port on your router to the container/host.
+- **Behind Gluetun/VPN**: you need a provider that supports **port forwarding**
+  (e.g. AirVPN, ProtonVPN, PIA) mapped to aMule's port. Providers without port
+  forwarding (e.g. Mullvad, NordVPN) will always leave you on LowID.
+
+If HighID isn't possible, see [Optimizing for LowID](#optimizing-for-lowid).
+
+### Bandwidth & limits
+
+Set **Line Capacity** to your *real* measured speed in KB/s (divide your Mbit/s by
+8 — e.g. 750/650 Mbit ≈ 90000/80000 KB/s). It drives aMule's internal heuristics
+and graph scaling; it is not a hard cap.
+
+| Setting                | Guidance                                                                                                                                                                                                          |
+| :--------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Line Capacity DL/UL** | Your real line speed in KB/s.                                                                                                                                                                                     |
+| **Speed Limit — Download** | `0` (unlimited) unless you need to reserve bandwidth for other devices.                                                                                                                                       |
+| **Speed Limit — Upload**   | On a **slow uplink**, cap to ~80% of real upload — a saturated uplink starves TCP ACKs and *slows your downloads*. On a **fast uplink** (where eMule can't saturate it), leave `0`: the credit system rewards uploading freely. |
+| **Max Sources / file**     | 300 is fine on HighID; raise to 800–1000 on LowID to widen the source pool.                                                                                                                                   |
+| **Max Connections**        | 500 is ample for most setups.                                                                                                                                                                                 |
+| **Max Conn / 5s**          | 20 is router-safe; raise toward 30–50 to find sources faster if your router's NAT table can handle it.                                                                                                        |
+| **Slot Allocation**        | ~10 KB gives a reasonable per-peer spread.                                                                                                                                                                    |
+| **Queue Size**             | 50 is small; raise to 200–500 if you have upload headroom, to serve more peers and build credits faster.                                                                                                      |
+
+### Optimizing for LowID
+
+If you're stuck on LowID, your line is rarely the bottleneck — your *source pool*
+is. To make the best of it:
+
+- **Enable Kad** (alongside ED2K). LowID clients depend on Kad to find sources
+  beyond what servers hand out.
+- **Enable protocol obfuscation** — recovers connections with peers/ISPs that
+  throttle or block plain eMule traffic.
+- **Raise Max Sources / file** (800–1000) and **Queue Size** (200–500) to scrape
+  and serve as much as possible.
+- Leave **upload unlimited** if your line allows — more upload means more credits,
+  your best lever for download priority.
+
+> [!NOTE]
+> Even fully tuned, LowID throughput is modest: you're source-limited, not
+> bandwidth-limited. A reachable port (HighID) is the only structural fix.
+
+---
+
 ## Tech Stack
 
 Mularr is built primarily with TypeScript.
