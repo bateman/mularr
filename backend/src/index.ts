@@ -66,6 +66,7 @@ async function main() {
 
 	const amuledService = new AmuledService();
 	container.register(AmuledService, amuledService);
+	amuledService.applySharedDirsFromEnvIfNeeded();
 	await amuledService.startDaemon();
 
 	// Initialize Gluetun Service

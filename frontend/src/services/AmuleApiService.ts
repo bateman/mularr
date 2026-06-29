@@ -38,6 +38,11 @@ export interface AmuleInfo {
 	version: string;
 }
 
+export interface SharedDirectoryEntry {
+	path: string;
+	recursive: boolean;
+}
+
 export interface ConfigValues {
 	nick?: string;
 	tcpPort?: string;
@@ -64,9 +69,11 @@ export interface ConfigValues {
 	smartIdCheck?: boolean;
 	ich?: boolean;
 	allocateFullFile?: boolean;
+	sharedDirs?: SharedDirectoryEntry[];
 	lockedFields?: {
 		incomingDir?: boolean;
 		tempDir?: boolean;
+		sharedDirs?: boolean;
 		ports?: boolean;
 	};
 }
@@ -99,6 +106,20 @@ export interface ServersResponse {
 	};
 }
 
+export enum CHUNK_STATUS {
+	UNAVAILABLE = 0,
+	AVAILABLE = 1,
+	COMPLETE = 2,
+	DOWNLOADING = 3,
+}
+
+interface ChunkInfo {
+	chunkStates: CHUNK_STATUS[];
+	chunkAvailability: number[];
+	partCount: number;
+	sizeFull: number;
+}
+
 export interface Transfer extends AmuleFile {
 	completed?: number;
 	speed?: number;
@@ -118,6 +139,9 @@ export interface Transfer extends AmuleFile {
 	filePath?: string;
 	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
 	sourceName?: string;
+	chunkInfo?: ChunkInfo;
+	/** Raw provider payload (aMule keeps chunk info here). */
+	providerData?: unknown;
 }
 
 export interface AmuleUpDownClient {

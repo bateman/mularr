@@ -1,4 +1,4 @@
-import { AmuleClient, AmuleFile, SearchType, type AmuleCategory } from 'amule-ec-client';
+import { AmuleClient, AmuleFile, AmuleTransferringFile, SearchType, type AmuleCategory } from 'amule-ec-client';
 import { exec } from 'child_process';
 import util from 'util';
 import fs from 'fs/promises';
@@ -7,6 +7,7 @@ import { container } from './container/ServiceContainer';
 import { MainDB, DownloadDbRecord } from '../services/db/MainDB';
 import { AmulecmdService } from './AmulecmdService';
 import { buildEd2kLink, parseEd2kLink } from './eD2kTools';
+import { ChunkInfo } from './mediaprovider/types';
 
 function normalizeCategoryName(name: string | null, ctgs: AmuleCategory[]): string {
 	const DEFAULT_VALUE = 'default';
@@ -51,7 +52,21 @@ interface Download {
 	timeLeft?: number;
 	categoryName?: string | null;
 	addedOn?: string | null;
+	chunkInfo?: ChunkInfo;
 	provider?: string;
+	providerData?: any; // Raw data from the provider
+}
+
+export function normalizeChunkProgress(transfer: AmuleTransferringFile): ChunkInfo | null {
+	const chunkInfo = transfer.chunkInfo;
+	if (!chunkInfo) return null;
+
+	return {
+		chunkStates: chunkInfo.chunks,
+		chunkAvailability: chunkInfo.availability,
+		partCount: chunkInfo.partCount,
+		sizeFull: chunkInfo.sizeFull,
+	};
 }
 
 function getDataFromFileRef(hashOrLink: string): FileRefData | null {
@@ -83,15 +98,7 @@ export class AmuleService {
 	private readonly host = process.env.AMULE_HOST || 'localhost';
 	private readonly port = process.env.AMULE_PORT || '4712';
 	private readonly password = process.env.AMULE_PASSWORD || 'secret';
-	// timeout: this is amule-ec-client's socket INACTIVITY timeout, not a
-	// per-request deadline, so keep it above the ~10s EC poll cadence. Too short
-	// and the long-lived socket idles out between polls, reconnects, and re-runs
-	// the salt auth handshake; under concurrent polls (getStats + getTransfers)
-	// that races on the library's single FIFO socket and floods 'Authentication
-	// failed: invalid password'. 30s keeps it alive in normal use while still
-	// bounding a stuck socket — amuled is on localhost, so a real outage surfaces
-	// fast as ECONNREFUSED or a clean close.
-	private readonly client = new AmuleClient({ host: this.host, port: parseInt(this.port), password: this.password, timeout: 30000 });
+	private readonly client = new AmuleClient({ host: this.host, port: parseInt(this.port), password: this.password, timeout: 5000, requestTimeout: 5000 });
 	private readonly amulecmdService: AmulecmdService | null = null;
 	private db: MainDB;
 
@@ -343,6 +350,8 @@ export class AmuleService {
 					categoryName: normalizeCategoryName(dbRecord?.category_name, categories),
 					addedOn: dbRecord ? dbRecord.added_at : null,
 					isCompleted: false,
+					chunkInfo: normalizeChunkProgress(file),
+					providerData: file,
 				} as Download;
 			});
 

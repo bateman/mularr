@@ -1,8 +1,9 @@
 import { component, signal, bindControlledInput, bindControlledSelect, bindControlledCheckbox, effect } from 'chispa';
 import { services } from '../../services/container/ServiceContainer';
-import { AmuleApiService } from '../../services/AmuleApiService';
+import { AmuleApiService, SharedDirectoryEntry } from '../../services/AmuleApiService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { DialogService } from '../../services/DialogService';
+import { SharedDirsSettings } from './components/SharedDirsSettings';
 import tpl from './SettingsView.html';
 import './SettingsView.css';
 
@@ -20,9 +21,14 @@ export const SettingsView = component(() => {
 	});
 
 	const interval = signal(prefs.get('ui.refreshInterval', 2000));
+	const detailedTransferProgress = signal(prefs.get('ui.transfers.useDetailedProgress', true));
 
 	effect(() => {
 		prefs.set('ui.refreshInterval', interval.get());
+	});
+
+	effect(() => {
+		prefs.set('ui.transfers.useDetailedProgress', detailedTransferProgress.get());
 	});
 
 	const nick = signal('');
@@ -59,6 +65,8 @@ export const SettingsView = component(() => {
 	const lockedPorts = signal(false);
 	const lockedIncomingDir = signal(false);
 	const lockedTempDir = signal(false);
+	const lockedSharedDirs = signal(false);
+	const sharedDirs = signal<SharedDirectoryEntry[]>([]);
 
 	const loadConfig = async () => {
 		try {
@@ -90,11 +98,17 @@ export const SettingsView = component(() => {
 				smartIdCheck.set(v.smartIdCheck ?? true);
 				ich.set(v.ich ?? true);
 				allocateFullFile.set(v.allocateFullFile ?? false);
+				sharedDirs.set((v.sharedDirs || []).map((entry) => ({ path: entry.path || '', recursive: !!entry.recursive })));
+				lockedPorts.set(false);
+				lockedIncomingDir.set(false);
+				lockedTempDir.set(false);
+				lockedSharedDirs.set(false);
 
 				if (v.lockedFields) {
 					lockedPorts.set(!!v.lockedFields.ports);
 					lockedIncomingDir.set(!!v.lockedFields.incomingDir);
 					lockedTempDir.set(!!v.lockedFields.tempDir);
+					lockedSharedDirs.set(!!v.lockedFields.sharedDirs);
 				}
 			}
 		} catch (e) {
@@ -118,6 +132,11 @@ export const SettingsView = component(() => {
 		intervalInput: {
 			_ref: (el) => {
 				bindControlledInput(el, interval);
+			},
+		},
+		detailedTransferProgress: {
+			_ref: (el) => {
+				bindControlledCheckbox(el, detailedTransferProgress);
 			},
 		},
 		nick: {
@@ -303,6 +322,7 @@ export const SettingsView = component(() => {
 						smartIdCheck: smartIdCheck.get(),
 						ich: ich.get(),
 						allocateFullFile: allocateFullFile.get(),
+						sharedDirs: sharedDirs.get(),
 					});
 					await loadConfig();
 				} catch (e) {
@@ -330,5 +350,9 @@ export const SettingsView = component(() => {
 				display: () => (lockedTempDir.get() ? '' : 'none'),
 			},
 		},
+		sharedDirsSection: SharedDirsSettings({
+			sharedDirs,
+			isLocked: () => lockedSharedDirs.get(),
+		}),
 	});
 });

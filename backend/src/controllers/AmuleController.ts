@@ -41,6 +41,8 @@ export class AmuleController {
 			await this.amuledService.startDaemon(); // Restart the daemon after updating config
 			res.json({ success: true });
 		} catch (e: any) {
+			// updateConfig may have stopped the daemon before throwing — ensure it comes back up.
+			await this.amuledService.startDaemon().catch(() => {});
 			res.status(500).json({ error: e.message });
 		}
 	};
