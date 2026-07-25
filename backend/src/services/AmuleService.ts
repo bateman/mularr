@@ -1,13 +1,13 @@
-import { AmuleClient, AmuleFile, AmuleTransferringFile, SearchType, type AmuleCategory } from 'amule-ec-client';
+import { AmuleClient, AmuleFile, AmuleTransferringFile, AmuleUpDownClient, FileStatus, SearchType, ServerPriority } from 'amule-ec-client';
+import type { AmuleCategory, SourceNameCount } from 'amule-ec-client';
 import { exec } from 'child_process';
 import util from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import { container } from './container/ServiceContainer';
 import { MainDB, DownloadDbRecord } from '../services/db/MainDB';
-import { AmulecmdService } from './AmulecmdService';
 import { buildEd2kLink, parseEd2kLink } from './eD2kTools';
-import { ChunkInfo } from './mediaprovider/types';
+import { ChunkInfo, TransferSource, TransferSourceNameCount } from './mediaprovider/types';
 
 function normalizeCategoryName(name: string | null, ctgs: AmuleCategory[]): string {
 	const DEFAULT_VALUE = 'default';
@@ -41,7 +41,7 @@ interface Download {
 	speed?: number;
 	isCompleted?: boolean;
 	progress?: number;
-	sources?: number;
+	sourceCount?: number;
 	priority?: number;
 	status?: string;
 	statusId?: number;
@@ -53,8 +53,32 @@ interface Download {
 	categoryName?: string | null;
 	addedOn?: string | null;
 	chunkInfo?: ChunkInfo;
+	sources?: TransferSource[];
+	sourceNames?: TransferSourceNameCount[];
 	provider?: string;
 	providerData?: any; // Raw data from the provider
+}
+
+function normalizeSourceNameCounts(sourceNames: SourceNameCount[] | undefined): TransferSourceNameCount[] {
+	if (!sourceNames || sourceNames.length === 0) return [];
+	return sourceNames.map((s) => ({ name: (s.name || '').trim(), count: Number(s.count || 0) })).filter((s) => !!s.name && s.count > 0);
+}
+
+function toTransferSourceFromClient(client: AmuleUpDownClient): TransferSource {
+	return {
+		clientName: client.clientName,
+		ip: client.userIP,
+		port: client.userPort,
+		software: client.software,
+		softwareVersion: client.softVerStr,
+		downloadSpeed: client.downSpeed,
+		uploadSpeed: client.upSpeed,
+		availableParts: client.availableParts,
+		remoteFilename: client.remoteFilename,
+		sourceFrom: client.sourceFrom,
+		remoteQueueRank: client.remoteQueueRank,
+		waitingPosition: client.waitingPosition,
+	};
 }
 
 export function normalizeChunkProgress(transfer: AmuleTransferringFile): ChunkInfo | null {
@@ -95,20 +119,15 @@ function findByHash<T extends AmuleFile>(downloads: T[], hash: string): T | null
 }
 
 export class AmuleService {
-	private readonly host = process.env.AMULE_HOST || 'localhost';
-	private readonly port = process.env.AMULE_PORT || '4712';
-	private readonly password = process.env.AMULE_PASSWORD || 'secret';
+	private readonly host = process.env.AMULE_EC_CLIENT_HOST || 'localhost';
+	private readonly port = process.env.AMULE_EC_CLIENT_PORT || '4712';
+	private readonly password = process.env.AMULE_EC_CLIENT_PASSWORD || 'secret';
 	private readonly client = new AmuleClient({ host: this.host, port: parseInt(this.port), password: this.password, timeout: 5000, requestTimeout: 5000 });
-	private readonly amulecmdService: AmulecmdService | null = null;
 	private db: MainDB;
 
 	constructor() {
 		this.db = container.get(MainDB);
 		//this.client.connection.setDebug(true);
-		// Enable fallback logic for amulecmd unless disabled
-		if (process.env.AMULECMD_FALLBACK !== 'false') {
-			this.amulecmdService = new AmulecmdService();
-		}
 	}
 
 	async getVersion() {
@@ -150,11 +169,7 @@ export class AmuleService {
 			};
 		} catch (error: any) {
 			console.error('❌ EC Client Stats Error:', error.message);
-			// Fallback to amulecmd if EC fails
-			if (this.amulecmdService) {
-				return this.amulecmdService.getStats();
-			}
-			return { raw: 'Stats error and fallback disabled' };
+			return { raw: 'Stats error' };
 		}
 	}
 
@@ -176,9 +191,6 @@ export class AmuleService {
 			return { list: servers, connectedServer };
 		} catch (error: any) {
 			console.error('❌ EC Client Servers Error:', error.message);
-			if (this.amulecmdService) {
-				return this.amulecmdService.getServers();
-			}
 			return { raw: 'Error getting servers', list: [] };
 		}
 	}
@@ -197,6 +209,66 @@ export class AmuleService {
 			await this.client.disconnectFromServer();
 		} catch (error) {
 			console.error('❌ EC Client Disconnect Error:', error);
+			throw error;
+		}
+	}
+
+	async updateServerListFromUrl(url: string) {
+		try {
+			await this.client.updateServerListFromUrl(url);
+		} catch (error) {
+			console.error('❌ EC Client Update Server List Error:', error);
+			throw error;
+		}
+	}
+
+	async addServer(ip: string, port: number, name?: string) {
+		try {
+			await this.client.addServer(ip, port, name);
+		} catch (error) {
+			console.error('❌ EC Client Add Server Error:', error);
+			throw error;
+		}
+	}
+
+	async removeServer(ip: string, port: number) {
+		try {
+			await this.client.removeServer(ip, port);
+		} catch (error) {
+			console.error('❌ EC Client Remove Server Error:', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * The daemon identifies servers by ECID for the static/priority operations,
+	 * but only reports it through the incremental update mechanism.
+	 */
+	private async resolveServerEcid(ip: string, port: number): Promise<number> {
+		const update = await this.client.getUpdate();
+		const server = (update.servers || []).find((s) => s.ip === ip && s.port === port);
+		if (!server?.ecid) {
+			throw new Error(`Server not found: ${ip}:${port}`);
+		}
+		return server.ecid;
+	}
+
+	async setServerPriority(ip: string, port: number, priority: ServerPriority) {
+		try {
+			const ecid = await this.resolveServerEcid(ip, port);
+			await this.client.setServerPriority(ecid, priority);
+		} catch (error) {
+			console.error('❌ EC Client Set Server Priority Error:', error);
+			throw error;
+		}
+	}
+
+	async setServerStatic(ip: string, port: number, isStatic: boolean) {
+		try {
+			const ecid = await this.resolveServerEcid(ip, port);
+			await this.client.setServerStatic(ecid, isStatic);
+		} catch (error) {
+			console.error('❌ EC Client Set Server Static Error:', error);
 			throw error;
 		}
 	}
@@ -234,7 +306,8 @@ export class AmuleService {
 
 	async getTransfers(): Promise<{ raw: string; list: Download[]; categories: AmuleCategory[] }> {
 		try {
-			const queue = await this.client.getDownloadQueue();
+			const queue = await this.client.getDownloadQueueWithSources();
+			//const queue = await this.client.getDownloadQueue();
 			const categories = await this.getCategories();
 			//console.log('Download Queue from EC Client:', queue);
 			let dbRecords = this.db.getAllDownloads().filter((r) => !r.provider || r.provider === 'amule');
@@ -251,19 +324,24 @@ export class AmuleService {
 			const transfers = dbRecords.map(async (dbRecord) => {
 				const queueFile = findByHash(queue, dbRecord.hash);
 				//console.log('Matching queue file for hash', dbRecord.hash, ':', queueFile);
-				if (!queueFile && !dbRecord.is_completed) {
-					const sharedFiles = await getSharedFiles();
-					//console.log('Checking shared files for completion of hash:', dbRecord.hash, sharedFiles);
-					const sharedFile = findByHash(sharedFiles, dbRecord.hash);
-					//console.log('Shared file found:', sharedFile);
-					if (sharedFile) {
+
+				if (!dbRecord.is_completed) {
+					// Completed downloads may linger in the download queue (status COMPLETE, stopped)
+					// until the daemon restarts — detect completion there too, not only via shared files.
+					let completedFile: AmuleFile | null = null;
+					if (queueFile) {
+						if (queueFile.fileStatus === FileStatus.COMPLETE) completedFile = queueFile;
+					} else {
+						completedFile = findByHash(await getSharedFiles(), dbRecord.hash);
+					}
+					if (completedFile) {
 						// Mark as completed in DB
 						try {
-							// Also update name and size from shared file info just in case they were never set
-							this.db.updateDownloadCompletion(dbRecord.hash, true, sharedFile.fileName, sharedFile.sizeFull);
+							// Also update name and size from file info just in case they were never set
+							this.db.updateDownloadCompletion(dbRecord.hash, true, completedFile.fileName, completedFile.sizeFull);
 							dbRecord.is_completed = 1;
-							dbRecord.name = sharedFile.fileName ?? '';
-							dbRecord.size = sharedFile.sizeFull || 0;
+							dbRecord.name = completedFile.fileName ?? '';
+							dbRecord.size = completedFile.sizeFull || 0;
 							console.log('Marked file as completed in DB:', dbRecord.hash, dbRecord.name);
 						} catch (e) {
 							console.error('DB update completion error:', e);
@@ -284,12 +362,13 @@ export class AmuleService {
 						progress: 1,
 						status: 'Completed',
 						statusId: 9, // Completed
-						stopped: false,
+						// The daemon reports completed downloads as stopped, so we do the same
+						stopped: true,
 						hash: dbRecord.hash,
 						link: link,
 						completed: sizeFull,
 						speed: 0,
-						sources: 0,
+						sourceCount: 0,
 						priority: 0,
 						remaining: 0,
 						addedOn: dbRecord.added_at,
@@ -313,7 +392,7 @@ export class AmuleService {
 						link: '',
 						completed: 0,
 						speed: 0,
-						sources: 0,
+						sourceCount: 0,
 						priority: 0,
 						remaining: dbRecord.size || 0,
 						addedOn: dbRecord.added_at,
@@ -343,14 +422,16 @@ export class AmuleService {
 					link: file.fileEd2kLink,
 					completed: sizeDone,
 					speed: file.speed || 0,
-					sources: file.sourceCount,
+					sourceCount: file.sourceCount,
 					priority: file.downPrio,
 					remaining: remaining,
 					timeLeft: timeLeft,
 					categoryName: normalizeCategoryName(dbRecord?.category_name, categories),
 					addedOn: dbRecord ? dbRecord.added_at : null,
-					isCompleted: false,
+					isCompleted: file.fileStatus === FileStatus.COMPLETE,
 					chunkInfo: normalizeChunkProgress(file),
+					sources: file.sources?.map((s) => toTransferSourceFromClient(s)) || [],
+					sourceNames: normalizeSourceNameCounts(file.sourceNames),
 					providerData: file,
 				} as Download;
 			});
@@ -362,9 +443,6 @@ export class AmuleService {
 			};
 		} catch (error: any) {
 			console.error('❌ EC Client Transfers Error:', error.message);
-			// if (this.amulecmdService) {
-			// 	return this.amulecmdService.getTransfers();
-			// }
 			return { raw: 'Error getting transfers', list: [], categories: [] };
 		}
 	}
@@ -428,8 +506,8 @@ export class AmuleService {
 					return {
 						name: file.fileName,
 						size: file.sizeFull,
-						sources: file.sourceCount,
-						completeSources: file.completeSourceCount,
+						sourceCount: file.sourceCount,
+						completeSourceCount: file.completeSourceCount,
 						downloadStatus: file.downloadStatus,
 						type: '',
 						link: ed2k,
@@ -445,9 +523,6 @@ export class AmuleService {
 			return { raw: 'No results yet', list: [] };
 		} catch (e: any) {
 			console.error('Get Search Results Error:', e);
-			if (this.amulecmdService) {
-				return this.amulecmdService.getSearchResults();
-			}
 			return { raw: 'Error fetching results', list: [] };
 		}
 	}
@@ -476,10 +551,6 @@ export class AmuleService {
 		} catch (e: any) {
 			console.error('❌ EC Client Upload Queue Error:', e.message);
 			return { raw: 'Error fetching upload queue', list: [] };
-			// No fallback for uploads since amulecmd doesn't provide this info
-			// if (this.amulecmdService) {
-			// 	return this.amulecmdService.getUploadQueue();
-			// }
 		}
 	}
 
@@ -498,7 +569,7 @@ export class AmuleService {
 
 		try {
 			if (!fileRefData) {
-				throw new Error('File ref error, skipping direct add and going to fallback');
+				throw new Error('File ref error, cannot add download');
 			} else if (!fileRefData.isEd2kLink) {
 				// This will only work if the hash is in the last search results.
 				await this.client.downloadSearchResult(Buffer.from(link, 'hex'));
@@ -508,11 +579,7 @@ export class AmuleService {
 				console.log(`Added download for ed2k link`);
 			}
 		} catch (e) {
-			console.warn('❌ EC Client failed to add download, falling back to amulecmd:', e);
-
-			if (this.amulecmdService) {
-				this.amulecmdService.addDownload(link);
-			}
+			console.error('❌ EC Client failed to add download:', e);
 		}
 
 		if (hash) {
@@ -539,11 +606,7 @@ export class AmuleService {
 			await this.client.deleteDownload(Buffer.from(hash, 'hex'));
 			// Remove from DB if successfully deleted from client
 		} catch (e) {
-			console.warn('❌ EC Client removeDownload failed, falling back to amulecmd:', e);
-
-			if (this.amulecmdService) {
-				await this.amulecmdService.removeDownload(hash);
-			}
+			console.error('❌ EC Client removeDownload failed:', e);
 		}
 
 		try {
@@ -609,7 +672,7 @@ export class AmuleService {
 			return cats || [];
 		} catch (e: any) {
 			console.error('❌ EC Client getCategories Error:', e.message);
-			// No reliable fallback via amulecmd - return empty list
+			// Return empty list on error
 			return [];
 		}
 	}

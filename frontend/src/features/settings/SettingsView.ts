@@ -1,9 +1,11 @@
-import { component, signal, bindControlledInput, bindControlledSelect, bindControlledCheckbox, effect } from 'chispa';
+import { component, signal, effect, refBindCheckbox, refBindInput, refBindSelect } from 'chispa';
 import { services } from '../../services/container/ServiceContainer';
 import { AmuleApiService, SharedDirectoryEntry } from '../../services/AmuleApiService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { DialogService } from '../../services/DialogService';
+import { smartLoad } from '../../utils/scheduling';
 import { SharedDirsSettings } from './components/SharedDirsSettings';
+import { BlacklistSettings } from './components/BlacklistSettings';
 import tpl from './SettingsView.html';
 import './SettingsView.css';
 
@@ -58,6 +60,15 @@ export const SettingsView = component(() => {
 	const smartIdCheck = signal(true);
 	const ich = signal(true);
 	const allocateFullFile = signal(false);
+	const previewPrio = signal(false);
+	const ipFilterClients = signal(true);
+	const ipFilterServers = signal(true);
+	const filterLanIps = signal(true);
+	const paranoidFiltering = signal(true);
+	const ipFilterAutoLoad = signal(true);
+	const ipFilterUrl = signal('');
+	const filterLevel = signal('127');
+	const ipFilterSystem = signal(false);
 
 	const showSplash = signal(true);
 	const startMinimized = signal(false);
@@ -67,6 +78,13 @@ export const SettingsView = component(() => {
 	const lockedTempDir = signal(false);
 	const lockedSharedDirs = signal(false);
 	const sharedDirs = signal<SharedDirectoryEntry[]>([]);
+
+	const amuleVersion = signal('');
+	const loadAmuleVersion = smartLoad(async () => {
+		const info = await apiService.getInfo();
+		amuleVersion.set(info.version || '');
+	}, 'amule-info');
+	loadAmuleVersion();
 
 	const loadConfig = async () => {
 		try {
@@ -98,6 +116,15 @@ export const SettingsView = component(() => {
 				smartIdCheck.set(v.smartIdCheck ?? true);
 				ich.set(v.ich ?? true);
 				allocateFullFile.set(v.allocateFullFile ?? false);
+				previewPrio.set(v.previewPrio ?? false);
+				ipFilterClients.set(v.ipFilterClients ?? true);
+				ipFilterServers.set(v.ipFilterServers ?? true);
+				filterLanIps.set(v.filterLanIps ?? true);
+				paranoidFiltering.set(v.paranoidFiltering ?? true);
+				ipFilterAutoLoad.set(v.ipFilterAutoLoad ?? true);
+				ipFilterUrl.set(v.ipFilterUrl || '');
+				filterLevel.set(v.filterLevel || '127');
+				ipFilterSystem.set(v.ipFilterSystem ?? false);
 				sharedDirs.set((v.sharedDirs || []).map((entry) => ({ path: entry.path || '', recursive: !!entry.recursive })));
 				lockedPorts.set(false);
 				lockedIncomingDir.set(false);
@@ -124,161 +151,65 @@ export const SettingsView = component(() => {
 	};
 
 	return tpl.fragment({
-		themeSelect: {
-			_ref: (el) => {
-				bindControlledSelect(el, theme);
-			},
-		},
-		intervalInput: {
-			_ref: (el) => {
-				bindControlledInput(el, interval);
-			},
-		},
-		detailedTransferProgress: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, detailedTransferProgress);
-			},
-		},
-		nick: {
-			_ref: (el) => {
-				bindControlledInput(el, nick);
-			},
-		},
+		themeSelect: { _ref: refBindSelect(theme) },
+		intervalInput: { _ref: refBindInput(interval) },
+		detailedTransferProgress: { _ref: refBindCheckbox(detailedTransferProgress) },
+		nick: { _ref: refBindInput(nick) },
 		tcpPort: {
 			disabled: lockedPorts,
-			_ref: (el) => {
-				bindControlledInput(el, tcpPort);
-			},
+			_ref: refBindInput(tcpPort),
 		},
 		udpPort: {
 			disabled: lockedPorts,
-			_ref: (el) => {
-				bindControlledInput(el, udpPort);
-			},
+			_ref: refBindInput(udpPort),
 		},
-		maxSources: {
-			_ref: (el) => {
-				bindControlledInput(el, maxSources);
-			},
-		},
-		maxConnections: {
-			_ref: (el) => {
-				bindControlledInput(el, maxConnections);
-			},
-		},
-		maxConnectionsPerFiveSeconds: {
-			_ref: (el) => {
-				bindControlledInput(el, maxConnectionsPerFiveSeconds);
-			},
-		},
-		slotAllocation: {
-			_ref: (el) => {
-				bindControlledInput(el, slotAllocation);
-			},
-		},
-		queueSizePref: {
-			_ref: (el) => {
-				bindControlledInput(el, queueSizePref);
-			},
-		},
-		fileBufferSizePref: {
-			_ref: (el) => {
-				bindControlledInput(el, fileBufferSizePref);
-			},
-		},
-		maxDownload: {
-			_ref: (el) => {
-				bindControlledInput(el, maxDownload);
-			},
-		},
-		maxUpload: {
-			_ref: (el) => {
-				bindControlledInput(el, maxUpload);
-			},
-		},
-		downloadCap: {
-			_ref: (el) => {
-				bindControlledInput(el, downloadCap);
-			},
-		},
-		uploadCap: {
-			_ref: (el) => {
-				bindControlledInput(el, uploadCap);
-			},
-		},
+		maxSources: { _ref: refBindInput(maxSources) },
+		maxConnections: { _ref: refBindInput(maxConnections) },
+		maxConnectionsPerFiveSeconds: { _ref: refBindInput(maxConnectionsPerFiveSeconds) },
+		slotAllocation: { _ref: refBindInput(slotAllocation) },
+		queueSizePref: { _ref: refBindInput(queueSizePref) },
+		fileBufferSizePref: { _ref: refBindInput(fileBufferSizePref) },
+		maxDownload: { _ref: refBindInput(maxDownload) },
+		maxUpload: { _ref: refBindInput(maxUpload) },
+		downloadCap: { _ref: refBindInput(downloadCap) },
+		uploadCap: { _ref: refBindInput(uploadCap) },
 		incomingDir: {
 			disabled: lockedIncomingDir,
-			_ref: (el) => {
-				bindControlledInput(el, incomingDir);
-			},
+			_ref: refBindInput(incomingDir),
 		},
 		tempDir: {
 			disabled: lockedTempDir,
-			_ref: (el) => {
-				bindControlledInput(el, tempDir);
-			},
+			_ref: refBindInput(tempDir),
 		},
-		netEd2k: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, netEd2k);
-			},
-		},
-		netKad: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, netKad);
-			},
-		},
-		autoconnect: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, autoconnect);
-			},
-		},
-		reconnect: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, reconnect);
-			},
-		},
-		upnp: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, upnp);
-			},
-		},
-		obfuscationRequested: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, obfuscationRequested);
-			},
-		},
-		obfuscationRequired: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, obfuscationRequired);
-			},
-		},
-		smartIdCheck: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, smartIdCheck);
-			},
-		},
-		ich: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, ich);
-			},
-		},
-		allocateFullFile: {
-			_ref: (el) => {
-				bindControlledCheckbox(el, allocateFullFile);
-			},
-		},
+		netEd2k: { _ref: refBindCheckbox(netEd2k) },
+		netKad: { _ref: refBindCheckbox(netKad) },
+		autoconnect: { _ref: refBindCheckbox(autoconnect) },
+		reconnect: { _ref: refBindCheckbox(reconnect) },
+		upnp: { _ref: refBindCheckbox(upnp) },
+		obfuscationRequested: { _ref: refBindCheckbox(obfuscationRequested) },
+		obfuscationRequired: { _ref: refBindCheckbox(obfuscationRequired) },
+		smartIdCheck: { _ref: refBindCheckbox(smartIdCheck) },
+		ich: { _ref: refBindCheckbox(ich) },
+		allocateFullFile: { _ref: refBindCheckbox(allocateFullFile) },
+		previewPrio: { _ref: refBindCheckbox(previewPrio) },
+		ipFilterClients: { _ref: refBindCheckbox(ipFilterClients) },
+		ipFilterServers: { _ref: refBindCheckbox(ipFilterServers) },
+		filterLanIps: { _ref: refBindCheckbox(filterLanIps) },
+		paranoidFiltering: { _ref: refBindCheckbox(paranoidFiltering) },
+		ipFilterAutoLoad: { _ref: refBindCheckbox(ipFilterAutoLoad) },
+		ipFilterUrl: { _ref: refBindInput(ipFilterUrl) },
+		filterLevel: { _ref: refBindInput(filterLevel) },
+		ipFilterSystem: { _ref: refBindCheckbox(ipFilterSystem) },
 		showSplash: {
 			onclick: handleNostalgiaClick,
-			_ref: (el) => {
-				bindControlledCheckbox(el, showSplash);
-			},
+			_ref: refBindCheckbox(showSplash),
 		},
 		startMinimized: {
 			onclick: handleNostalgiaClick,
-			_ref: (el) => {
-				bindControlledCheckbox(el, startMinimized);
-			},
+			_ref: refBindCheckbox(startMinimized),
+		},
+		amuleVersionLabel: {
+			inner: () => (amuleVersion.get() ? `aMule v${amuleVersion.get()}` : ''),
 		},
 		restartDaemonBtn: {
 			disabled: restartingDaemon,
@@ -322,6 +253,15 @@ export const SettingsView = component(() => {
 						smartIdCheck: smartIdCheck.get(),
 						ich: ich.get(),
 						allocateFullFile: allocateFullFile.get(),
+						previewPrio: previewPrio.get(),
+						ipFilterClients: ipFilterClients.get(),
+						ipFilterServers: ipFilterServers.get(),
+						filterLanIps: filterLanIps.get(),
+						paranoidFiltering: paranoidFiltering.get(),
+						ipFilterAutoLoad: ipFilterAutoLoad.get(),
+						ipFilterUrl: ipFilterUrl.get(),
+						filterLevel: filterLevel.get(),
+						ipFilterSystem: ipFilterSystem.get(),
 						sharedDirs: sharedDirs.get(),
 					});
 					await loadConfig();
@@ -354,5 +294,6 @@ export const SettingsView = component(() => {
 			sharedDirs,
 			isLocked: () => lockedSharedDirs.get(),
 		}),
+		blacklistSection: BlacklistSettings(),
 	});
 });

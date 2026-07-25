@@ -1,4 +1,4 @@
-import { component, signal, bindControlledInput, computed, componentList } from 'chispa';
+import { component, signal, refBindInput, computed, componentList } from 'chispa';
 import { TelegramApiService, type TelegramUser, type TelegramChat } from '../../../services/TelegramApiService';
 import { DialogService } from '../../../services/DialogService';
 import { services } from '../../../services/container/ServiceContainer';
@@ -12,7 +12,27 @@ const ChatsRows = componentList<TelegramChat, ChatRowProps>(
 	(c, i, l, props) => {
 		return tpl.chatRow({
 			nodes: {
-				chatName: { inner: () => c.get().title },
+				chatName: {
+					nodes: {
+						chatNameText: { inner: () => c.get().title },
+						mobileInfo: {
+							nodes: {
+								mobType: { inner: () => c.get().type },
+								mobStatusBadge: {
+									inner: () => (c.get().indexing_enabled ? 'Indexing' : 'Ignored'),
+									style: {
+										color: () => (c.get().indexing_enabled ? '#46d369' : '#ff4d4d'),
+										fontWeight: 'bold',
+									},
+								},
+								mobActionBtn: {
+									inner: () => (c.get().indexing_enabled ? 'Disable' : 'Enable'),
+									onclick: () => props!.onToggleChat(c.get()),
+								},
+							},
+						},
+					},
+				},
 				chatType: { inner: () => c.get().type },
 				chatStatusBadge: {
 					inner: () => (c.get().indexing_enabled ? 'Indexing' : 'Ignored'),
@@ -211,19 +231,13 @@ export const TelegramConfig = component(() => {
 
 		// Inputs use _ref for manual binding
 		inputApiId: {
-			_ref: (el: HTMLInputElement) => {
-				bindControlledInput(el, apiId);
-			},
+			_ref: refBindInput(apiId),
 		},
 		inputApiHash: {
-			_ref: (el: HTMLInputElement) => {
-				bindControlledInput(el, apiHash);
-			},
+			_ref: refBindInput(apiHash),
 		},
 		inputPhone: {
-			_ref: (el: HTMLInputElement) => {
-				bindControlledInput(el, inputPhoneNumber);
-			},
+			_ref: refBindInput(inputPhoneNumber),
 		},
 
 		btnStartAuth: {
@@ -233,9 +247,7 @@ export const TelegramConfig = component(() => {
 		},
 
 		inputCode: {
-			_ref: (el: HTMLInputElement) => {
-				bindControlledInput(el, authCode);
-			},
+			_ref: refBindInput(authCode),
 		},
 
 		btnSubmitCode: {
@@ -245,9 +257,7 @@ export const TelegramConfig = component(() => {
 		},
 
 		inputPassword: {
-			_ref: (el: HTMLInputElement) => {
-				bindControlledInput(el, password);
-			},
+			_ref: refBindInput(password),
 		},
 
 		btnSubmitPassword: {

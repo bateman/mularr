@@ -22,7 +22,18 @@
 
 		<button class="ui-btn" data-cb="refreshBtn">Update Results</button>
 
-		<div style="width: 1px; height: 20px; background: #808080;"></div>
+		<div style="width: 1px; height: 20px; background: #808080; margin: 0 5px;"></div>
+
+		<div data-cb="providerFilterBlock" class="ui-inline-input-block" style="display: none;">
+			<label>Provider:</label>
+			<select data-cb="providerFilterSelect">
+				<option value="all">All</option>
+				<option value="amule">aMule</option>
+				<option value="telegram">Telegram</option>
+			</select>
+		</div>
+
+		<div style="width: 1px; height: 20px; background: #808080; margin: 0 5px;"></div>
 		<button class="ui-btn" data-cb="downloadSelectedBtn" disabled>
 			<span class="icon-img icon-download"></span> Download Selected
 		</button>
@@ -97,6 +108,7 @@
 					style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 10px; line-height: 14px; color: black;">
 					0%</div>
 			</div>
+			<span data-cb="blacklistHiddenLabel" style="display: none; font-size: 0.82em; white-space: nowrap;"></span>
 		</div>
 		<div data-cb="ed2kForm"></div>
 	</div>

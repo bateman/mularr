@@ -109,8 +109,8 @@ export const TransferProgressBar = component<TransferProgressBarProps>(({ transf
 			style: { width: () => `${progressPercentage.get()}%` },
 			addClass: () => {
 				const t = transfer.get();
-				if (t.stopped || t.statusId === 7) return 'transfer-progress-bar-paused';
 				if (t.isCompleted) return 'transfer-progress-bar-complete';
+				if (t.stopped || t.statusId === 7) return 'transfer-progress-bar-paused';
 				return '';
 			},
 		},
@@ -121,7 +121,7 @@ export const TransferProgressBar = component<TransferProgressBarProps>(({ transf
 			style: { display: () => (shouldShowChunked() ? '' : 'none') },
 			addClass: () => {
 				const t = transfer.get();
-				if (t.stopped || t.statusId === 7) return 'detailed-progress-bar-paused';
+				if (!t.isCompleted && (t.stopped || t.statusId === 7)) return 'detailed-progress-bar-paused';
 				return '';
 			},
 		},
