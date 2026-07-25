@@ -1,5 +1,21 @@
 import { BaseApiService } from './BaseApiService';
 
+export interface ConnectionState {
+	ed2kConnected?: boolean;
+	ed2kConnecting?: boolean;
+	kadConnected?: boolean;
+	kadFirewalled?: boolean;
+	kadRunning?: boolean;
+	ed2kId?: number;
+	clientId?: number;
+	serverIpv4?: {
+		address: string;
+		port: number;
+	};
+	serverName?: string;
+	serverDescription?: string;
+}
+
 export interface StatsResponse {
 	raw?: string;
 	id?: number;
@@ -11,7 +27,7 @@ export interface StatsResponse {
 		ip: string;
 		port: number;
 	};
-	connectionState?: any;
+	connectionState?: ConnectionState;
 	uploadOverhead?: number;
 	downloadOverhead?: number;
 	bannedCount?: number;
@@ -69,6 +85,16 @@ export interface ConfigValues {
 	smartIdCheck?: boolean;
 	ich?: boolean;
 	allocateFullFile?: boolean;
+	previewPrio?: boolean;
+	ipFilterClients?: boolean;
+	ipFilterServers?: boolean;
+	filterLanIps?: boolean;
+	paranoidFiltering?: boolean;
+	ipFilterAutoLoad?: boolean;
+	ipFilterUrl?: string;
+	ed2kServersUrl?: string;
+	filterLevel?: string;
+	ipFilterSystem?: boolean;
 	sharedDirs?: SharedDirectoryEntry[];
 	lockedFields?: {
 		incomingDir?: boolean;
@@ -120,11 +146,31 @@ interface ChunkInfo {
 	sizeFull: number;
 }
 
+export interface TransferSource {
+	clientName?: string;
+	ip?: string;
+	port?: number;
+	software?: string;
+	softwareVersion?: string;
+	downloadSpeed?: number;
+	uploadSpeed?: number;
+	availableParts?: number;
+	remoteFilename?: string;
+	sourceFrom?: number;
+	remoteQueueRank?: number;
+	waitingPosition?: number;
+}
+
+export interface TransferSourceNameCount {
+	name: string;
+	count: number;
+}
+
 export interface Transfer extends AmuleFile {
 	completed?: number;
 	speed?: number;
 	progress?: number;
-	sources?: number;
+	sourceCount?: number;
 	priority?: number;
 	status?: string;
 	statusId?: number;
@@ -140,6 +186,8 @@ export interface Transfer extends AmuleFile {
 	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
 	sourceName?: string;
 	chunkInfo?: ChunkInfo;
+	sources?: TransferSource[];
+	sourceNames?: TransferSourceNameCount[];
 	/** Raw provider payload (aMule keeps chunk info here). */
 	providerData?: unknown;
 }
@@ -244,9 +292,9 @@ export interface SearchResult {
 	hash: string;
 	link?: string;
 	type?: string;
-	sources?: string;
+	sourceCount?: string;
 	downloadStatus?: number;
-	completeSources?: string;
+	completeSourceCount?: string;
 	provider?: string;
 	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
 	sourceName?: string;
@@ -255,6 +303,8 @@ export interface SearchResult {
 export interface SearchResultsResponse {
 	raw: string;
 	list: SearchResult[];
+	/** Number of results hidden because their hash is blacklisted. */
+	blacklistedCount?: number;
 }
 
 export interface SearchStatusResponse {
@@ -375,6 +425,41 @@ export class AmuleApiService extends BaseApiService {
 	async disconnectFromServer(): Promise<SuccessResponse> {
 		return this.request<SuccessResponse>('/server/disconnect', {
 			method: 'POST',
+		});
+	}
+
+	async updateServerList(url: string): Promise<SuccessResponse> {
+		return this.request<SuccessResponse>('/server/update-list', {
+			method: 'POST',
+			body: JSON.stringify({ url }),
+		});
+	}
+
+	async addServer(ip: string, port: number, name?: string): Promise<SuccessResponse> {
+		return this.request<SuccessResponse>('/server/add', {
+			method: 'POST',
+			body: JSON.stringify({ ip, port, name }),
+		});
+	}
+
+	async removeServer(ip: string, port: number): Promise<SuccessResponse> {
+		return this.request<SuccessResponse>('/server/remove', {
+			method: 'POST',
+			body: JSON.stringify({ ip, port }),
+		});
+	}
+
+	async setServerPriority(ip: string, port: number, priority: number): Promise<SuccessResponse> {
+		return this.request<SuccessResponse>('/server/set-priority', {
+			method: 'POST',
+			body: JSON.stringify({ ip, port, priority }),
+		});
+	}
+
+	async setServerStatic(ip: string, port: number, isStatic: boolean): Promise<SuccessResponse> {
+		return this.request<SuccessResponse>('/server/set-static', {
+			method: 'POST',
+			body: JSON.stringify({ ip, port, isStatic }),
 		});
 	}
 

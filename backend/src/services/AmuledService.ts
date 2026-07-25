@@ -3,6 +3,7 @@ import util from 'util';
 import path from 'path';
 import fs from 'fs';
 import net from 'net';
+import { AmuleLogWatcher } from './AmuleLogWatcher';
 
 const execPromise = util.promisify(exec);
 
@@ -11,6 +12,7 @@ export class AmuledService {
 	private _isRestarting = false;
 	private _isStopping = false;
 	private readonly sharedDirsManager = new AmuleSharedDirsManager(this);
+	private readonly logWatcher = new AmuleLogWatcher(this.configDir);
 
 	get configDirectory(): string {
 		return this.configDir;
@@ -140,8 +142,8 @@ export class AmuledService {
 	}
 
 	private waitForEcPort(timeoutMs: number): Promise<boolean> {
-		const ecPort = parseInt(process.env.AMULE_PORT || '4712');
-		const ecHost = process.env.AMULE_HOST || 'localhost';
+		const ecPort = parseInt(process.env.AMULE_EC_CLIENT_PORT || '4712');
+		const ecHost = process.env.AMULE_EC_CLIENT_HOST || 'localhost';
 		const interval = 400;
 		const deadline = Date.now() + timeoutMs;
 
@@ -190,7 +192,7 @@ export class AmuledService {
 			}
 		}
 		console.log('Starting aMule daemon...');
-		const child = spawn('amuled', ['-c', this.configDir, '-f'], {
+		const child = spawn('amuled', ['-c', this.configDir], {
 			detached: true,
 			stdio: 'ignore',
 		});
@@ -228,6 +230,27 @@ export class AmuledService {
 		}
 	}
 
+	// ── Incremental log watching (delegated to AmuleLogWatcher) ─────────────
+
+	/** Subscribe to new log lines. Returns an unsubscribe function. */
+	onLogLines(listener: (lines: string[]) => void): () => void {
+		return this.logWatcher.onLines(listener);
+	}
+
+	/** Current in-memory log tail, primed and kept up to date by the watcher. */
+	getLogLines(): string[] {
+		return this.logWatcher.getLines();
+	}
+
+	/** Starts the incremental logfile watcher. Idempotent. */
+	startLogWatcher(): Promise<void> {
+		return this.logWatcher.start();
+	}
+
+	stopLogWatcher(): void {
+		this.logWatcher.stop();
+	}
+
 	async getConfig() {
 		const config: any = {
 			lockedFields: {
@@ -246,8 +269,8 @@ export class AmuledService {
 				const findVal = (key: string) =>
 					lines
 						.find((l) => l.startsWith(key + '='))
-						?.split('=')[1]
-						?.trim();
+						?.slice(key.length + 1)
+						.trim();
 
 				config.nick = findVal('Nick');
 				config.tcpPort = findVal('Port');
@@ -274,6 +297,16 @@ export class AmuledService {
 				config.smartIdCheck = findVal('SmartIdCheck') === '1';
 				config.ich = findVal('ICH') === '1';
 				config.allocateFullFile = findVal('AllocateFullFile') === '1';
+				config.previewPrio = findVal('PreviewPrio') === '1';
+				config.ipFilterClients = findVal('IpFilterClients') === '1';
+				config.ipFilterServers = findVal('IpFilterServers') === '1';
+				config.filterLanIps = findVal('FilterLanIPs') === '1';
+				config.paranoidFiltering = findVal('ParanoidFiltering') === '1';
+				config.ipFilterAutoLoad = findVal('IPFilterAutoLoad') === '1';
+				config.ipFilterUrl = findVal('IPFilterURL');
+				config.ed2kServersUrl = findVal('Ed2kServersUrl');
+				config.filterLevel = findVal('FilterLevel');
+				config.ipFilterSystem = findVal('IPFilterSystem') === '1';
 			}
 		} catch (e) {
 			console.warn('Could not read local amule.conf:', e);
@@ -325,6 +358,15 @@ export class AmuledService {
 			SmartIdCheck: fromBool(newConfig.smartIdCheck),
 			ICH: fromBool(newConfig.ich),
 			AllocateFullFile: fromBool(newConfig.allocateFullFile),
+			PreviewPrio: fromBool(newConfig.previewPrio),
+			IpFilterClients: fromBool(newConfig.ipFilterClients),
+			IpFilterServers: fromBool(newConfig.ipFilterServers),
+			FilterLanIPs: fromBool(newConfig.filterLanIps),
+			ParanoidFiltering: fromBool(newConfig.paranoidFiltering),
+			IPFilterAutoLoad: fromBool(newConfig.ipFilterAutoLoad),
+			IPFilterURL: newConfig.ipFilterUrl,
+			FilterLevel: newConfig.filterLevel,
+			IPFilterSystem: fromBool(newConfig.ipFilterSystem),
 		};
 
 		if (process.env.GLUETUN_ENABLED?.toLowerCase() !== 'true') {

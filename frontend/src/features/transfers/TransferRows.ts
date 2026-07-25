@@ -6,18 +6,27 @@ import { ExtensionsApiService } from '../../services/ExtensionsApiService';
 import { ContextMenuService, ContextMenuItem } from '../../services/ContextMenuService';
 import { TransfersContextService } from '../../services/TransfersContextService';
 import { DialogService } from '../../services/DialogService';
+import { ClipboardService } from '../../services/ClipboardService';
 import { getFileIcon } from '../../utils/icons';
 import { isVideoFile } from '../../utils/files';
 import { fbytes, formatRemaining } from '../../utils/formats';
 import { RowSelectionManager } from '../../utils/ListManager';
 import { TransferDetailsDialog } from './TransferDetailsDialog';
 import { TransferProgressBar } from './TransferProgressBar';
+import { formatSourcesSummary } from './sourcesSummary';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { statusMap } from './transferStatus';
 import tpl from './TransfersView.html';
 import './TransfersView.css';
 
 export const DEFAULT_VALUE = 'default';
+
+const numberToColor = (num: number) => {
+	const r = num & 0xff;
+	const g = (num >> 8) & 0xff;
+	const b = (num >> 16) & 0xff;
+	return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+};
 
 async function buildContextMenuActions(t: Signal<Transfer>, selectionMgr: RowSelectionManager): Promise<ContextMenuItem[]> {
 	const extensionsApi = services.get(ExtensionsApiService);
@@ -30,24 +39,30 @@ async function buildContextMenuActions(t: Signal<Transfer>, selectionMgr: RowSel
 	const hash = transfer.hash ?? '';
 	const allHashes = [...selectionMgr.selectedHashes.get()].filter(Boolean) as string[];
 	const targetHashes = allHashes.length > 0 ? allHashes : hash ? [hash] : [];
+	// Resolve the selected transfers so multi-selection menus reflect all of them
+	const allTransfers = ctx.transfers.get();
+	const targetTransfers = targetHashes.map((h) => allTransfers.find((x) => x.hash === h) ?? (h === hash ? transfer : null)).filter(Boolean) as Transfer[];
+	const multi = targetHashes.length > 1;
 
-	// ---- Details action ----
-	actions.push({
-		label: 'Details ...',
-		icon: 'ℹ️',
-		onClick: () => {
-			dialogService.open({
-				title: transfer.name || 'Transfer Details',
-				width: '580px',
-				render: (close) => TransferDetailsDialog({ transfer: t, onClose: close }),
-			});
-		},
-	});
-	actions.push({ separator: true });
+	// ---- Details action (single selection only) ----
+	if (!multi) {
+		actions.push({
+			label: 'Details ...',
+			icon: 'ℹ️',
+			onClick: () => {
+				dialogService.open({
+					title: transfer.name || 'Transfer Details',
+					width: '680px',
+					render: (close) => TransferDetailsDialog({ transfer: t, onClose: close }),
+				});
+			},
+		});
+		actions.push({ separator: true });
+	}
 
-	// ---- Media preview actions ----
+	// ---- Media preview actions (single selection only) ----
 	const filePath = transfer.filePath;
-	if (filePath && isVideoFile(filePath)) {
+	if (!multi && filePath && isVideoFile(filePath)) {
 		try {
 			const allExtensions = await extensionsApi.getExtensions();
 			const previewers = allExtensions.filter((x) => x.type === 'media_previewer' && x.enabled);
@@ -65,10 +80,10 @@ async function buildContextMenuActions(t: Signal<Transfer>, selectionMgr: RowSel
 		actions.push({ separator: true });
 	}
 
-	// ---- Transfer control actions ----
-	const canPause = !transfer.isCompleted && !transfer.stopped && transfer.statusId === 0;
-	const canResume = !transfer.isCompleted && (!!transfer.stopped || transfer.statusId === 7);
-	const canStop = transfer.provider === 'amule' && !transfer.isCompleted && !transfer.stopped;
+	// ---- Transfer control actions (enabled when applicable to any selected transfer) ----
+	const canPause = targetTransfers.some((x) => !x.isCompleted && !x.stopped && x.statusId === 0);
+	const canResume = targetTransfers.some((x) => !x.isCompleted && (!!x.stopped || x.statusId === 7));
+	const canStop = targetTransfers.some((x) => x.provider === 'amule' && !x.isCompleted && !x.stopped);
 
 	actions.push({ label: 'Pause', icon: '⏸', disabled: !canPause, onClick: () => ctx.executeCommand(targetHashes, 'pause') });
 	actions.push({ label: 'Resume', icon: '▶', disabled: !canResume, onClick: () => ctx.executeCommand(targetHashes, 'resume') });
@@ -98,26 +113,26 @@ async function buildContextMenuActions(t: Signal<Transfer>, selectionMgr: RowSel
 	}
 
 	// ---- Blacklist action ----
-	if (hash) {
+	if (targetTransfers.length > 0) {
 		actions.push({ separator: true });
 		actions.push({
-			label: 'Blacklist Hash…',
+			label: multi ? `Blacklist ${targetTransfers.length} Hashes…` : 'Blacklist Hash…',
 			icon: '🚫',
 			onClick: async () => {
-				const ok = await ctx.blacklistHash(hash, transfer.name || '');
+				const ok = await ctx.blacklistTransfers(targetTransfers);
 				if (ok) selectionMgr.clearSelection();
 			},
 		});
 	}
 
 	// ---- ed2k link action (amule only) ----
-	if (transfer.provider === 'amule' && transfer.link) {
-		const ed2kLink = transfer.link;
+	const ed2kLinks = targetTransfers.filter((x) => x.provider === 'amule' && x.link).map((x) => x.link!);
+	if (ed2kLinks.length > 0) {
 		actions.push({ separator: true });
 		actions.push({
-			label: 'Copy ed2k Link',
+			label: ed2kLinks.length > 1 ? `Copy ${ed2kLinks.length} ed2k Links` : 'Copy ed2k Link',
 			icon: '🔗',
-			onClick: () => navigator.clipboard.writeText(ed2kLink),
+			onClick: () => services.get(ClipboardService).copy(ed2kLinks.join('\n')),
 		});
 	}
 
@@ -135,10 +150,25 @@ export const TransfersRows = componentList<Transfer, TransferListProps>(
 		const onRowClick = props!.onRowClick;
 		const prefs = services.get(LocalPrefsService);
 		const ctxMenu = services.get(ContextMenuService);
+		const transferCtx = services.get(TransfersContextService);
 		const isSelected = computed(() => selectionMgr.selectedHashes.get().has(t.get().hash || ''));
 		const addedOn = computed(() => {
 			const dt = t.get().addedOn;
 			return dt ? new Date(dt).toLocaleString() : '-';
+		});
+		const categoryName = () => {
+			const name = t.get().categoryName;
+			return name === DEFAULT_VALUE ? '-' : (name ?? '-');
+		};
+		// Must be a computed (not a plain function): its string value acts as a memo
+		// barrier, so the categoryColorDot node below is only rebuilt when the color
+		// actually changes and not on every transfers push (identity churn).
+		const categoryColor = computed(() => {
+			const name = t.get().categoryName;
+			if (!name || name === DEFAULT_VALUE) return 'transparent';
+			const cat = transferCtx.categories.get().find((c) => c.name === name);
+			if (!cat || !cat.color) return 'transparent';
+			return numberToColor(cat.color);
 		});
 
 		return tpl.transferRow({
@@ -154,7 +184,7 @@ export const TransfersRows = componentList<Transfer, TransferListProps>(
 				const transfer = t.get();
 				const hash = transfer.hash;
 				if (hash) {
-					selectionMgr.handleRowSelection(e, hash, l.get());
+					selectionMgr.handleContextMenuSelection(e, hash, l.get());
 					onRowClick(hash);
 				}
 				const actions = await buildContextMenuActions(t, selectionMgr);
@@ -175,14 +205,14 @@ export const TransfersRows = componentList<Transfer, TransferListProps>(
 								mobStatus: {
 									inner: () => {
 										const tfer = t.get();
-										if (tfer.stopped) return 'Stopped';
 										if (tfer.isCompleted) return 'Completed';
+										if (tfer.stopped) return 'Stopped';
 										return statusMap[tfer.statusId ?? -1] || tfer.status || 'Unknown';
 									},
 								},
 								mobSpeed: {
 									inner: () => ((t.get().speed ?? 0) > 0 ? fbytes(t.get().speed) + '/s' : ''),
-									style: { display: () => ((t.get().speed ?? 0) > 0 ? 'inline' : 'none') },
+									style: { display: () => ((t.get().speed ?? 0) > 0 ? '' : 'none') },
 								},
 								mobProgress: { inner: () => ((t.get().progress || 0) * 100).toFixed(1) + '%' },
 								mobProgressBar: { style: { width: () => `${(t.get().progress || 0) * 100}%` } },
@@ -196,7 +226,13 @@ export const TransfersRows = componentList<Transfer, TransferListProps>(
 				},
 				sourceInfoCol: { inner: () => t.get().sourceName || '', title: () => t.get().sourceName || '' },
 				sizeCol: { inner: () => fbytes(t.get().size) },
-				categoryCol: { inner: () => (t.get().categoryName === DEFAULT_VALUE ? '-' : (t.get().categoryName ?? '-')) },
+				categoryCol: {
+					nodes: {
+						categoryColorDot: () =>
+							categoryColor.get() === 'transparent' ? null : tpl.categoryColorDot({ style: { backgroundColor: categoryColor } }),
+						categoryText: { inner: categoryName },
+					},
+				},
 				completedCol: { inner: () => fbytes(t.get().completed) },
 				speedCol: { inner: () => ((t.get().speed ?? 0) > 0 ? fbytes(t.get().speed) + '/s' : '') },
 				progressCol: {
@@ -205,13 +241,13 @@ export const TransfersRows = componentList<Transfer, TransferListProps>(
 						preferChunked: prefs.get('ui.transfers.useDetailedProgress', true),
 					}),
 				},
-				sourcesCol: { inner: () => String(t.get().sources || 0) },
+				sourcesCol: { inner: () => formatSourcesSummary(t.get()) },
 				priorityCol: { inner: () => String(t.get().priority || 0) },
 				statusCol: {
 					inner: () => {
 						const tfer = t.get();
-						if (tfer.stopped) return 'Stopped';
 						if (tfer.isCompleted) return 'Completed';
+						if (tfer.stopped) return 'Stopped';
 						return statusMap[tfer.statusId ?? -1] || tfer.status || 'Unknown';
 					},
 				},
