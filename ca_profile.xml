@@ -7,6 +7,6 @@ Mularr exposes qBittorrent-compatible APIs and Torznab indexers so you can plug 
 
 For support, please open an issue on GitHub: https://github.com/joecarl/mularr/issues
 	</Profile>
-	<Icon>https://games.copinstar.com/img/mularr/mularr-logo.png</Icon>
+	<Icon>https://games.copinstar.com/img/mularr/mularr-icon-unraid.png</Icon>
 	<WebPage>https://github.com/joecarl/mularr</WebPage>
 </CommunityApplications>

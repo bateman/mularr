@@ -6,7 +6,7 @@
 	<Network>bridge</Network>
 	<Shell>bash</Shell>
 	<Privileged>false</Privileged>
-	<Icon>https://games.copinstar.com/img/mularr/mularr-logo.png</Icon>
+	<Icon>https://games.copinstar.com/img/mularr/mularr-icon-unraid.png</Icon>
 	<WebUI>http://[IP]:[PORT:8940]</WebUI>
 	<Overview>
 Mularr is a powerful integration for aMule that provides a functional web interface with a nostalgia-infused retro touch. It bridges the gap between classic P2P and modern automation tools by offering qBittorrent-compatible APIs and Torznab indexers, making it seamless to use aMule with apps like Sonarr and Radarr.
