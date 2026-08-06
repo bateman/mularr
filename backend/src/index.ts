@@ -35,6 +35,7 @@ console.log(`Starting Mularr v${__APP_MANIFEST__.version}...`);
 
 const app = express();
 const port = process.env.PORT || 8940;
+const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../dev-data/database.sqlite');
 
 app.use(cors());
 app.use(express.json());
@@ -43,7 +44,7 @@ app.use(express.urlencoded({ extended: true }));
 // -- Initialize & register services in container ------------------------------
 
 // Initialize Auth Service (must be first so middleware can use it)
-const authService = new AuthService();
+const authService = new AuthService(path.dirname(dbPath));
 container.register(AuthService, authService);
 if (authService.isAuthEnabled()) {
 	console.log('[Auth] Authentication is enabled.');
@@ -53,7 +54,6 @@ if (authService.isAuthEnabled()) {
 
 async function main() {
 	// Initialize Main DB
-	const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../dev-data/database.sqlite');
 	const mainDb = new MainDB(dbPath);
 	container.register(MainDB, mainDb);
 

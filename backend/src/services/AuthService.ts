@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import jwt from 'jsonwebtoken';
 import { Response } from 'express';
 
@@ -14,21 +16,39 @@ export class AuthService {
 	private readonly apiKey?: string;
 	private readonly jwtSecret: string;
 
-	constructor() {
+	constructor(dataDir: string) {
 		this.username = process.env.AUTH_USERNAME;
 		this.password = process.env.AUTH_PASSWORD;
 		this.apiKey = process.env.API_KEY;
+		this.jwtSecret = this.resolveJwtSecret(dataDir);
+	}
 
+	/**
+	 * Resolves the JWT signing secret. Priority: the JWT_SECRET env var, then a
+	 * previously persisted secret in the data directory. If neither exists, a
+	 * random secret is generated and persisted so tokens survive restarts.
+	 */
+	private resolveJwtSecret(dataDir: string): string {
 		const envSecret = process.env.JWT_SECRET;
-		if (envSecret) {
-			this.jwtSecret = envSecret;
-		} else {
-			// Auto-generate a random secret (invalidates on restart, acceptable)
-			this.jwtSecret = crypto.randomBytes(48).toString('hex');
-			if (this.isAuthEnabled()) {
-				console.warn('[AuthService] JWT_SECRET not set — session tokens will be invalidated on restart.');
-			}
+		if (envSecret) return envSecret;
+
+		const secretPath = path.join(dataDir, 'jwt-secret');
+		try {
+			const stored = fs.readFileSync(secretPath, 'utf-8').trim();
+			if (stored) return stored;
+		} catch {
+			// File doesn't exist yet — generate a new secret below
 		}
+
+		const secret = crypto.randomBytes(48).toString('hex');
+		try {
+			fs.mkdirSync(dataDir, { recursive: true });
+			fs.writeFileSync(secretPath, secret, { encoding: 'utf-8', mode: 0o600 });
+			console.log(`[AuthService] Generated new JWT secret and saved it to ${secretPath}`);
+		} catch (err) {
+			console.warn(`[AuthService] Could not persist JWT secret to ${secretPath} — session tokens will be invalidated on restart.`, err);
+		}
+		return secret;
 	}
 
 	isAuthEnabled(): boolean {
