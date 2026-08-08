@@ -1,4 +1,4 @@
-import { services } from './container/ServiceContainer';
+import { inject } from 'chispa';
 import { BlacklistApiService } from './BlacklistApiService';
 import { DialogService } from './DialogService';
 import { BlacklistConfirmDialog } from '../components/BlacklistConfirmDialog';
@@ -15,8 +15,8 @@ export interface BlacklistCandidate {
  * (transfers cancel the downloads, search refreshes the results).
  */
 export class BlacklistService {
-	private readonly blacklistApi = services.get(BlacklistApiService);
-	private readonly dialogService = services.get(DialogService);
+	private readonly blacklistApi = inject(BlacklistApiService);
+	private readonly dialogService = inject(DialogService);
 
 	/**
 	 * @param consequences Sentence appended to the confirmation message describing what will happen.

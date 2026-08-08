@@ -1,5 +1,4 @@
-import { component, Signal } from 'chispa';
-import { services } from '../../../services/container/ServiceContainer';
+import { inject, component, Signal } from 'chispa';
 import { BlacklistApiService, BlacklistEntry } from '../../../services/BlacklistApiService';
 import { DialogService } from '../../../services/DialogService';
 import { fbytes } from '../../../utils/formats';
@@ -11,8 +10,8 @@ export interface BlacklistManagerDialogProps {
 }
 
 export const BlacklistManagerDialog = component<BlacklistManagerDialogProps>(({ entries, reload }) => {
-	const blacklistApi = services.get(BlacklistApiService);
-	const dialogService = services.get(DialogService);
+	const blacklistApi = inject(BlacklistApiService);
+	const dialogService = inject(DialogService);
 
 	const removeEntry = async (entry: BlacklistEntry) => {
 		const confirmed = await dialogService.confirm(

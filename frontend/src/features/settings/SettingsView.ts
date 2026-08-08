@@ -1,5 +1,4 @@
-import { component, signal, effect, refBindCheckbox, refBindInput, refBindSelect } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, signal, effect, refBindCheckbox, refBindInput, refBindSelect } from 'chispa';
 import { AmuleApiService, SharedDirectoryEntry } from '../../services/AmuleApiService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { DialogService } from '../../services/DialogService';
@@ -10,9 +9,9 @@ import tpl from './SettingsView.html';
 import './SettingsView.css';
 
 export const SettingsView = component(() => {
-	const apiService = services.get(AmuleApiService);
-	const prefs = services.get(LocalPrefsService);
-	const dialogService = services.get(DialogService);
+	const apiService = inject(AmuleApiService);
+	const prefs = inject(LocalPrefsService);
+	const dialogService = inject(DialogService);
 
 	const theme = signal(prefs.getTheme());
 

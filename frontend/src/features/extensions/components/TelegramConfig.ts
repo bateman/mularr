@@ -1,7 +1,6 @@
-import { component, signal, refBindInput, computed, componentList } from 'chispa';
+import { inject, component, signal, refBindInput, computed, componentList } from 'chispa';
 import { TelegramApiService, type TelegramUser, type TelegramChat } from '../../../services/TelegramApiService';
 import { DialogService } from '../../../services/DialogService';
-import { services } from '../../../services/container/ServiceContainer';
 import tpl from './TelegramConfig.html';
 import './TelegramConfig.css';
 
@@ -53,8 +52,8 @@ const ChatsRows = componentList<TelegramChat, ChatRowProps>(
 
 export const TelegramConfig = component(() => {
 	// Services
-	const api = services.get(TelegramApiService);
-	const dialogs = services.get(DialogService);
+	const api = inject(TelegramApiService);
+	const dialogs = inject(DialogService);
 
 	// Signals
 	const authStatus = signal('disconnected');

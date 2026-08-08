@@ -1,5 +1,4 @@
-import { component, signal, computed, refBindSelect, effect } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, signal, computed, refBindSelect, effect } from 'chispa';
 import { AmuleUpDownClient } from '../../services/AmuleApiService';
 import { Transfer } from '../../services/MediaApiService';
 import { DialogService } from '../../services/DialogService';
@@ -36,10 +35,10 @@ function getSelectedTransfers(hashes: Set<string>, list: Transfer[]): Transfer[]
 }
 
 export const TransfersView = component(() => {
-	const ctx = services.get(TransfersContextService);
-	const dialogService = services.get(DialogService);
-	const prefs = services.get(LocalPrefsService);
-	const ws = services.get(WsService);
+	const ctx = inject(TransfersContextService);
+	const dialogService = inject(DialogService);
+	const prefs = inject(LocalPrefsService);
+	const ws = inject(WsService);
 
 	const mgr = new ListManager<Transfer, keyof Transfer>({
 		defaultColumn: 'name',

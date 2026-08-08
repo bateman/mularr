@@ -1,5 +1,4 @@
-import { signal, effect, WritableSignal } from 'chispa';
-import { services } from './container/ServiceContainer';
+import { inject, signal, effect, WritableSignal } from 'chispa';
 import { MediaApiService, Transfer, Category } from './MediaApiService';
 import { DialogService } from './DialogService';
 import { BlacklistService } from './BlacklistService';
@@ -24,13 +23,13 @@ export class TransfersContextService {
 	readonly transfers: WritableSignal<Transfer[]> = signal([]);
 	readonly categories: WritableSignal<Category[]> = signal([]);
 
-	private readonly mediaApi = services.get(MediaApiService);
-	private readonly dialogService = services.get(DialogService);
-	private readonly blacklistService = services.get(BlacklistService);
+	private readonly mediaApi = inject(MediaApiService);
+	private readonly dialogService = inject(DialogService);
+	private readonly blacklistService = inject(BlacklistService);
 
 	constructor() {
 		// Keep state in sync with WebSocket push updates
-		const ws = services.get(WsService);
+		const ws = inject(WsService);
 		effect(() => {
 			const t = ws.transfers.get();
 			if (t) {

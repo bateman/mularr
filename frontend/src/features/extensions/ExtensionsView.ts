@@ -1,5 +1,4 @@
-import { component, signal } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, signal } from 'chispa';
 import { ExtensionsApiService, Extension, EXTENSION_TYPES } from '../../services/ExtensionsApiService';
 import { DialogService } from '../../services/DialogService';
 import { TelegramConfig } from './components/TelegramConfig';
@@ -8,8 +7,8 @@ import tpl from './ExtensionsView.html';
 import './ExtensionsView.css';
 
 export const ExtensionsView = component(() => {
-	const api = services.get(ExtensionsApiService);
-	const dialogService = services.get(DialogService);
+	const api = inject(ExtensionsApiService);
+	const dialogService = inject(DialogService);
 	const extensions = signal<Extension[]>([]);
 
 	const refresh = async () => {

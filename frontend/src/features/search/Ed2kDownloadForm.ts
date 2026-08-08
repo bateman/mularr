@@ -1,5 +1,4 @@
-import { component, signal, refBindInput } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, signal, refBindInput } from 'chispa';
 import { DialogService } from '../../services/DialogService';
 import { MediaApiService, type AddDownloadResponse } from '../../services/MediaApiService';
 import { BulkDownloadDialog } from './BulkDownloadDialog';
@@ -15,8 +14,8 @@ const duplicateStatusLabel = (duplicate: NonNullable<AddDownloadResponse['duplic
 const truncateName = (name: string, maxLength = 50) => (name.length > maxLength ? name.slice(0, maxLength - 1) + '…' : name);
 
 export const Ed2kDownloadForm = component<Ed2kDownloadFormProps>(({ onAdded }) => {
-	const apiService = services.get(MediaApiService);
-	const dialogService = services.get(DialogService);
+	const apiService = inject(MediaApiService);
+	const dialogService = inject(DialogService);
 	const downloadLink = signal('');
 
 	const handleDownload = async () => {

@@ -1,9 +1,8 @@
-import { component, signal, refBindInput, refBindSelect, onUnmount, effect, computed, componentList, Signal } from 'chispa';
+import { inject, component, signal, refBindInput, refBindSelect, onUnmount, effect, computed, componentList, Signal } from 'chispa';
 import { getFileIcon } from '../../utils/icons';
 import { fbytes } from '../../utils/formats';
 import { ListManager, RowSelectionManager } from '../../utils/ListManager';
 import { smartLoad } from '../../utils/scheduling';
-import { services } from '../../services/container/ServiceContainer';
 import { DialogService } from '../../services/DialogService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { MediaApiService, SearchResult } from '../../services/MediaApiService';
@@ -27,7 +26,7 @@ function buildContextMenuActions(result: SearchResult, selectionMgr: RowSelectio
 		actions.push({
 			label: ed2kLinks.length > 1 ? `Copy ${ed2kLinks.length} ed2k Links` : 'Copy ed2k Link',
 			icon: '🔗',
-			onClick: () => services.get(ClipboardService).copy(ed2kLinks.join('\n')),
+			onClick: () => inject(ClipboardService).copy(ed2kLinks.join('\n')),
 		});
 	}
 
@@ -37,7 +36,7 @@ function buildContextMenuActions(result: SearchResult, selectionMgr: RowSelectio
 			label: multi ? `Blacklist ${targets.length} Hashes…` : 'Blacklist Hash…',
 			icon: '🚫',
 			onClick: async () => {
-				const ok = await services.get(BlacklistService).blacklistWithConfirm(
+				const ok = await inject(BlacklistService).blacklistWithConfirm(
 					targets.map((r) => ({ hash: r.hash, name: r.name, size: r.size })),
 					multi
 						? 'The hashes will be blocked from downloads and hidden from search results.'
@@ -77,7 +76,7 @@ const ResultsRows = componentList<SearchResult, ResultsRowsProps>(
 		const downloadingHashes = props!.downloadingHashes;
 		const selectionMgr = props!.selectionMgr;
 		const onBlacklisted = props!.onBlacklisted;
-		const ctxMenu = services.get(ContextMenuService);
+		const ctxMenu = inject(ContextMenuService);
 		const isSelected = computed(() => selectionMgr.selectedHashes.get().has(res.get().hash || ''));
 		const isDownloading = computed(() => downloadingHashes.get().has(res.get().hash || ''));
 		const isDisabled = computed(() => isDownloading.get() || res.get().downloadStatus === 1 || res.get().downloadStatus === 2);
@@ -164,9 +163,9 @@ const ResultsRows = componentList<SearchResult, ResultsRowsProps>(
 );
 
 export const SearchView = component(() => {
-	const apiService = services.get(MediaApiService);
-	const dialogService = services.get(DialogService);
-	const prefs = services.get(LocalPrefsService);
+	const apiService = inject(MediaApiService);
+	const dialogService = inject(DialogService);
+	const prefs = inject(LocalPrefsService);
 
 	const statusLog = signal('');
 	const searchQuery = signal('');
@@ -186,8 +185,7 @@ export const SearchView = component(() => {
 	// Provider filter (only shown when the Telegram indexer extension is enabled)
 	const providerFilter = signal('all');
 	const telegramEnabled = signal(false);
-	services
-		.get(ExtensionsApiService)
+	inject(ExtensionsApiService)
 		.getExtensions()
 		.then((list) => telegramEnabled.set(list.some((x) => x.type === 'telegram_indexer' && !!x.enabled)))
 		.catch(() => {});

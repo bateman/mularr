@@ -1,5 +1,4 @@
-import { computed, componentList, Signal } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, computed, componentList, Signal } from 'chispa';
 import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
 import { Transfer } from '../../services/MediaApiService';
 import { ExtensionsApiService } from '../../services/ExtensionsApiService';
@@ -29,9 +28,9 @@ const numberToColor = (num: number) => {
 };
 
 async function buildContextMenuActions(t: Signal<Transfer>, selectionMgr: RowSelectionManager): Promise<ContextMenuItem[]> {
-	const extensionsApi = services.get(ExtensionsApiService);
-	const ctx = services.get(TransfersContextService);
-	const dialogService = services.get(DialogService);
+	const extensionsApi = inject(ExtensionsApiService);
+	const ctx = inject(TransfersContextService);
+	const dialogService = inject(DialogService);
 	const actions: ContextMenuItem[] = [];
 	const popupProps = 'width=1280,height=720,toolbar=no,menubar=no,location=no,status=no';
 
@@ -132,7 +131,7 @@ async function buildContextMenuActions(t: Signal<Transfer>, selectionMgr: RowSel
 		actions.push({
 			label: ed2kLinks.length > 1 ? `Copy ${ed2kLinks.length} ed2k Links` : 'Copy ed2k Link',
 			icon: '🔗',
-			onClick: () => services.get(ClipboardService).copy(ed2kLinks.join('\n')),
+			onClick: () => inject(ClipboardService).copy(ed2kLinks.join('\n')),
 		});
 	}
 
@@ -148,9 +147,9 @@ export const TransfersRows = componentList<Transfer, TransferListProps>(
 	(t, i, l, props) => {
 		const selectionMgr = props!.selectionMgr;
 		const onRowClick = props!.onRowClick;
-		const prefs = services.get(LocalPrefsService);
-		const ctxMenu = services.get(ContextMenuService);
-		const transferCtx = services.get(TransfersContextService);
+		const prefs = inject(LocalPrefsService);
+		const ctxMenu = inject(ContextMenuService);
+		const transferCtx = inject(TransfersContextService);
 		const isSelected = computed(() => selectionMgr.selectedHashes.get().has(t.get().hash || ''));
 		const addedOn = computed(() => {
 			const dt = t.get().addedOn;
