@@ -1,5 +1,4 @@
-import { component, computed, componentList, effect, signal, Signal, refBindInput } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, computed, componentList, effect, signal, Signal, refBindInput } from 'chispa';
 import { AmuleApiService, AmuleFile } from '../../services/AmuleApiService';
 import { DialogService } from '../../services/DialogService';
 import { ExtensionsApiService } from '../../services/ExtensionsApiService';
@@ -21,8 +20,8 @@ async function buildContextMenuActions(
 	mgr: ListManager<AmuleFile, keyof AmuleFile>,
 	onDelete: (hashes: string[]) => void
 ): Promise<ContextMenuItem[]> {
-	const extensionsApi = services.get(ExtensionsApiService);
-	const dialogService = services.get(DialogService);
+	const extensionsApi = inject(ExtensionsApiService);
+	const dialogService = inject(DialogService);
 	const actions: ContextMenuItem[] = [];
 	const popupProps = 'width=1280,height=720,toolbar=no,menubar=no,location=no,status=no';
 
@@ -77,7 +76,7 @@ async function buildContextMenuActions(
 		actions.push({
 			label: ed2kLinks.length > 1 ? `Copy ${ed2kLinks.length} ed2k Links` : 'Copy ed2k Link',
 			icon: '🔗',
-			onClick: () => services.get(ClipboardService).copy(ed2kLinks.join('\n')),
+			onClick: () => inject(ClipboardService).copy(ed2kLinks.join('\n')),
 		});
 		actions.push({ separator: true });
 	}
@@ -100,7 +99,7 @@ interface SharedListProps {
 const SharedRows = componentList<AmuleFile, SharedListProps>(
 	(t, i, l, props) => {
 		const mgr = props!.mgr;
-		const ctxMenu = services.get(ContextMenuService);
+		const ctxMenu = inject(ContextMenuService);
 		const isSelected = computed(() => mgr.selectedHashes.get().has(t.get().hash!));
 
 		return tpl.sharedRow({
@@ -147,10 +146,10 @@ const MOBILE_SORT_OPTIONS: any[] = [];
 const SHARED_PAGE_SIZE = 200;
 
 export const SharedView = component(() => {
-	const apiService = services.get(AmuleApiService);
-	const dialogService = services.get(DialogService);
-	const prefs = services.get(LocalPrefsService);
-	const ws = services.get(WsService);
+	const apiService = inject(AmuleApiService);
+	const dialogService = inject(DialogService);
+	const prefs = inject(LocalPrefsService);
+	const ws = inject(WsService);
 	const nameFilter = signal('');
 	const visibleCount = signal(SHARED_PAGE_SIZE);
 

@@ -1,10 +1,9 @@
-import { computed } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, computed } from 'chispa';
 import { StatsService } from '../../services/StatsService';
 import tpl from '../Sidebar.html';
 
 export const ConnectionContainer = () => {
-	const statsService = services.get(StatsService);
+	const statsService = inject(StatsService);
 
 	// Derivado de stats.connectionState (con fallback a los campos legacy id/ed2kId/kadId/connectedServer).
 	const stats = () => statsService.stats.get();

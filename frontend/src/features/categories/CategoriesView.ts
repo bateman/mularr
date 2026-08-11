@@ -1,5 +1,4 @@
-import { component, signal } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, signal } from 'chispa';
 import { CategoriesApiService, Category } from '../../services/CategoriesApiService';
 import { DialogService } from '../../services/DialogService';
 import { smartLoad } from '../../utils/scheduling';
@@ -14,8 +13,8 @@ const numberToColor = (num: number) => {
 };
 
 export const CategoriesView = component(() => {
-	const apiService = services.get(CategoriesApiService);
-	const dialogService = services.get(DialogService);
+	const apiService = inject(CategoriesApiService);
+	const dialogService = inject(DialogService);
 	const categories = signal<Category[]>([]);
 
 	const loadCategories = smartLoad(async () => {

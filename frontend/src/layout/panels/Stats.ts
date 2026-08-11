@@ -1,7 +1,6 @@
-import { componentList, computed } from 'chispa';
+import { inject, componentList, computed } from 'chispa';
 import { formatAmount, formatBytes, formatSpeed } from '../../utils/formats';
 import { StatsService } from '../../services/StatsService';
-import { services } from '../../services/container/ServiceContainer';
 import tpl from '../Sidebar.html';
 
 const formatLimit = (v: number) => (v === 0 ? { text: 'Unlimited' } : formatSpeed(v));
@@ -54,7 +53,7 @@ const StatsRows = componentList<RenderedStat>(
 );
 
 export const StatsContainer = () => {
-	const statsService = services.get(StatsService);
+	const statsService = inject(StatsService);
 
 	const computedStats = computed(() => {
 		const res: RenderedStat[] = [];

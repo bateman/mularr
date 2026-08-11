@@ -145,7 +145,7 @@ Para renderizar listas de elementos repetitivos (como filas de tabla `<tr>` o it
 ## Estructura de Archivos
 
 - **Componentes**: `Component.ts` + `Component.html` + `Component.css` (opcional).
-- **Servicios**: Clases Singleton inyectadas vía `ServiceContainer`.
+- **Servicios**: Clases Singleton inyectadas vía `inject()` de chispa.
 - **Estado Global**: Usar servicios (`StoreService`, de signals) en lugar de contextos de React.
 
 ## Ocultar y mostrar nodos
