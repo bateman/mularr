@@ -46,8 +46,18 @@ export class AuthService {
 		try {
 			const stored = fs.readFileSync(secretPath, 'utf-8').trim();
 			if (stored) return stored;
-		} catch {
-			// File doesn't exist yet — generate a new secret below
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+				// The file exists but can't be read (permissions, I/O error). Don't
+				// overwrite it — use an ephemeral secret for this run so the stored
+				// secret becomes valid again once the underlying problem is fixed.
+				console.warn(
+					`[AuthService] Could not read JWT secret from ${secretPath} — using an ephemeral secret; session tokens will be invalidated on restart.`,
+					err,
+				);
+				return crypto.randomBytes(48).toString('hex');
+			}
+			// File doesn't exist yet — generate and persist a new secret below
 		}
 
 		const secret = crypto.randomBytes(48).toString('hex');
