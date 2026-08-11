@@ -1,5 +1,4 @@
-import { component, componentList, computed, Signal, signal } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, componentList, computed, Signal, signal } from 'chispa';
 import { SystemApiService, SystemInfo } from '../../services/SystemApiService';
 import { WsService } from '../../services/WsService';
 import tpl from '../Sidebar.html';
@@ -86,7 +85,7 @@ const Net = component<NetworkProps>(({ systemInfo }) => {
 });
 
 export const NetworkContainer = () => {
-	const ws = services.get(WsService);
+	const ws = inject(WsService);
 	const systemInfo = ws.systemInfo;
 
 	const infoAvailable = computed(() => !!systemInfo.get());

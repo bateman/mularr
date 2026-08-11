@@ -1,5 +1,4 @@
-import { component, signal } from 'chispa';
-import { services } from '../../../services/container/ServiceContainer';
+import { inject, component, signal } from 'chispa';
 import { BlacklistApiService, BlacklistEntry } from '../../../services/BlacklistApiService';
 import { DialogService } from '../../../services/DialogService';
 import { fbytes } from '../../../utils/formats';
@@ -7,8 +6,8 @@ import { BlacklistManagerDialog } from './BlacklistManagerDialog';
 import tpl from './BlacklistSettings.html';
 
 export const BlacklistSettings = component(() => {
-	const blacklistApi = services.get(BlacklistApiService);
-	const dialogService = services.get(DialogService);
+	const blacklistApi = inject(BlacklistApiService);
+	const dialogService = inject(DialogService);
 
 	const entries = signal<BlacklistEntry[]>([]);
 

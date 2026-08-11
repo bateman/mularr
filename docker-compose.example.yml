@@ -57,7 +57,7 @@ services:
             - AUTH_USERNAME= # example: admin. With AUTH_PASSWORD, enables the mularr web-interface login (also accepted as the qbittorrent api password)
             - AUTH_PASSWORD= # example: admin. With AUTH_USERNAME, enables the mularr web-interface login (also accepted as the qbittorrent api password)
             - API_KEY= # example: supersecretapikey. Authenticates API requests from other apps without login (needed for torznab integration, for example. API_KEY can also be used as password with the username 'apikey' for the qbittorrent api)
-            - JWT_SECRET= # example: supersecretjwtkey. Used to sign JSON Web Tokens for API authentication (if not set, a random secret will be generated on startup, which means any existing tokens will become invalid after a restart)
+            - JWT_SECRET= # example: supersecretjwtkey. Used to sign JSON Web Tokens for API authentication. If not set, a random secret is generated on first startup and stored in a 'jwt-secret' file in the data directory (next to the database), so tokens remain valid across restarts. Only set this if you want to control the secret yourself. NOTE: to force-invalidate all existing sessions (e.g. after rotating API_KEY or AUTH_PASSWORD), delete the 'jwt-secret' file (or change this value) and restart.
 
             # [EXPERIMENTAL] External connection (EC) client settings used by Mularr to reach aMule.
             # Mularr is designed to work with the aMule instance it manages internally, so you should

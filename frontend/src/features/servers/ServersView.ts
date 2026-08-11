@@ -1,5 +1,4 @@
-import { component, componentList, computed, effect, refBindInput, Signal, signal } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, componentList, computed, effect, refBindInput, Signal, signal } from 'chispa';
 import { AmuleApiService, Server } from '../../services/AmuleApiService';
 import { ContextMenuService, ContextMenuItem } from '../../services/ContextMenuService';
 import { DialogService } from '../../services/DialogService';
@@ -34,7 +33,7 @@ interface ServersViewProps {
 const ServersRows = componentList<ServerItem, ServersViewProps>(
 	(sv, i, l, props) => {
 		const { connectedServer, onConnectToServer, onRemoveServers, onSetPriority, onSetStatic, mgr } = props!;
-		const ctxMenu = services.get(ContextMenuService);
+		const ctxMenu = inject(ContextMenuService);
 
 		const isConnected = computed(() => {
 			const cs = connectedServer.get();
@@ -141,11 +140,11 @@ const LogLines = componentList<LogLine>(
 );
 
 export const ServersView = component(() => {
-	const apiService = services.get(AmuleApiService);
-	const statsService = services.get(StatsService);
-	const dialogService = services.get(DialogService);
-	const prefs = services.get(LocalPrefsService);
-	const ws = services.get(WsService);
+	const apiService = inject(AmuleApiService);
+	const statsService = inject(StatsService);
+	const dialogService = inject(DialogService);
+	const prefs = inject(LocalPrefsService);
+	const ws = inject(WsService);
 
 	const mgr = new ListManager<ServerItem, keyof ServerItem>({
 		defaultColumn: 'name',

@@ -1,5 +1,4 @@
-import { component, componentList, signal, effect } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, componentList, signal, effect } from 'chispa';
 import type { SpeedSample } from '../../services/DashboardApiService';
 import type { Transfer } from '../../services/MediaApiService';
 import type { AmuleUpDownClient } from '../../services/AmuleApiService';
@@ -134,7 +133,7 @@ const UploadRows = componentList<AmuleUpDownClient>(
 // ── DashboardView ─────────────────────────────────────────────────────────────
 
 export const DashboardView = component(() => {
-	const ws = services.get(WsService);
+	const ws = inject(WsService);
 
 	// ── Data signals ──────────────────────────────────────────────────────
 	const activeTransfers = signal<Transfer[]>([]);

@@ -1,4 +1,4 @@
-import { services } from './container/ServiceContainer';
+import { inject } from 'chispa';
 import { DialogService } from './DialogService';
 import { ManualCopyDialog } from '../components/ManualCopyDialog';
 
@@ -53,7 +53,7 @@ export class ClipboardService {
 	}
 
 	private openManualCopyDialog(text: string) {
-		services.get(DialogService).open({
+		inject(DialogService).open({
 			title: 'Copy to Clipboard',
 			width: '420px',
 			render: (close) => ManualCopyDialog({ text, onClose: close }),

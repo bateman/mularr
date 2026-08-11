@@ -1,5 +1,4 @@
-import { refBindInput, component, signal } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, refBindInput, component, signal } from 'chispa';
 import { AuthApiService } from '../../services/AuthApiService';
 import tpl from './LoginView.html';
 import './LoginView.css';
@@ -9,7 +8,7 @@ export interface ILoginViewProps {
 }
 
 export const LoginView = component<ILoginViewProps>(({ onLogin }) => {
-	const authService = services.get(AuthApiService);
+	const authService = inject(AuthApiService);
 
 	const username = signal('');
 	const password = signal('');

@@ -1,5 +1,4 @@
-import { component, computed, Signal } from 'chispa';
-import { services } from '../../services/container/ServiceContainer';
+import { inject, component, computed, Signal } from 'chispa';
 import { ClipboardService } from '../../services/ClipboardService';
 import { AmuleFile } from '../../services/AmuleApiService';
 import { getFileIcon } from '../../utils/icons';
@@ -60,7 +59,7 @@ export const SharedDetailsDialog = component<SharedDetailsDialogProps>(({ file: 
 		},
 		valEd2kLink: { inner: ed2kLink },
 		copyLinkBtn: {
-			onclick: () => services.get(ClipboardService).copy(ed2kLink.get()),
+			onclick: () => inject(ClipboardService).copy(ed2kLink.get()),
 		},
 		btnClose: { onclick: onClose },
 	});

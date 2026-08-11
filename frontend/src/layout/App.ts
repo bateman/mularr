@@ -1,5 +1,4 @@
-import { component, type Route, Router, signal } from 'chispa';
-import { services } from '../services/container/ServiceContainer';
+import { inject, component, type Route, Router, signal } from 'chispa';
 import { AmuleInfo, AmuleApiService } from '../services/AmuleApiService';
 import { StatsService } from '../services/StatsService';
 import { WsService } from '../services/WsService';
@@ -12,9 +11,9 @@ export interface IAppProps {
 	routes: Route[];
 }
 export const App = component<IAppProps>(({ routes }) => {
-	const apiService = services.get(AmuleApiService);
-	const statsService = services.get(StatsService);
-	const ws = services.get(WsService);
+	const apiService = inject(AmuleApiService);
+	const statsService = inject(StatsService);
+	const ws = inject(WsService);
 	const amuleInfo = signal<AmuleInfo | null>(null);
 	const isSidebarOpen = signal(false);
 

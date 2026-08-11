@@ -1,5 +1,4 @@
-import { component, Link, pathMatches } from 'chispa';
-import { services } from '../services/container/ServiceContainer';
+import { inject, component, Link, pathMatches } from 'chispa';
 import { AuthApiService } from '../services/AuthApiService';
 import { StatsContainer } from './panels/Stats';
 import { NetworkContainer } from './panels/Network';
@@ -20,7 +19,7 @@ export interface SidebarProps {
 }
 
 export const Sidebar = component<SidebarProps>((props) => {
-	const authService = services.get(AuthApiService);
+	const authService = inject(AuthApiService);
 
 	const handleLogout = () => {
 		authService.logout();
