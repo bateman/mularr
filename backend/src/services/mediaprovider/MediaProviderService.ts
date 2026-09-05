@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import type { AmuleCategory } from 'amule-ec-client';
 import { __APP_CONFIG__ } from '../../app-env';
 import { container } from '../container/ServiceContainer';
 import { AmuleService } from '../AmuleService';
@@ -10,7 +9,15 @@ import { AppEvents, toDownloadEventPayload } from '../AppEvents';
 import { parseEd2kLink } from '../eD2kTools';
 import { AmuleMediaProvider } from './adapters/AmuleMediaProvider';
 import { TelegramMediaProvider } from './adapters/TelegramMediaProvider';
-import type { IMediaProvider, MediaTransfer, MediaSearchResult, MediaTransfersResponse, MediaSearchResponse, MediaSearchStatusResponse } from './types';
+import type {
+	MediaCategory,
+	IMediaProvider,
+	MediaTransfer,
+	MediaSearchResult,
+	MediaTransfersResponse,
+	MediaSearchResponse,
+	MediaSearchStatusResponse,
+} from './types';
 
 /**
  * How long a transfers snapshot is served from cache. Building one chains several EC requests,
@@ -106,7 +113,7 @@ export class MediaProviderService {
 			if (r.status === 'fulfilled') combined.push(...r.value);
 		}
 
-		let categories: AmuleCategory[] = [];
+		let categories: MediaCategory[] = [];
 		try {
 			categories = await this.amuleService.getCategories();
 		} catch (_e) {}
@@ -232,7 +239,7 @@ export class MediaProviderService {
 
 	// ---- Categories (amule-specific, proxied) ----------------------------------
 
-	async getCategories(): Promise<AmuleCategory[]> {
+	async getCategories(): Promise<MediaCategory[]> {
 		return this.amuleService.getCategories();
 	}
 

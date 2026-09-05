@@ -7,9 +7,11 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 
-# Copy source and build
+# Copy source and build. backend/src/types holds the wire-contract types the frontend imports
+# (type-only, dependency-free modules; see frontend/src/services/apiTypes.ts)
 COPY frontend/ ./
 COPY app-manifest.json ../
+COPY backend/src/types ../backend/src/types
 RUN npm run build
 
 # Stage 2: Build Backend

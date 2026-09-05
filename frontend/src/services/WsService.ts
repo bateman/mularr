@@ -1,7 +1,7 @@
 import { inject, signal } from 'chispa';
 import { AuthApiService } from './AuthApiService';
 import type { StatsResponse, AmuleUpDownClient, Server, ServersResponse, AmuleFile } from './AmuleApiService';
-import type { TransfersResponse } from './MediaApiService';
+import type { MediaTransfersResponse } from './MediaApiService';
 import type { SpeedSample } from './DashboardApiService';
 import type { SystemInfo } from './SystemApiService';
 
@@ -42,7 +42,7 @@ export class WsService {
 	// ── Public signals ─────────────────────────────────────────────────────────
 	public readonly connected = signal(false);
 	public readonly amuleStatus = signal<StatsResponse | null>(null);
-	public readonly transfers = signal<TransfersResponse | null>(null);
+	public readonly transfers = signal<MediaTransfersResponse | null>(null);
 	public readonly uploadQueue = signal<{ list: AmuleUpDownClient[] } | null>(null);
 	public readonly speedSamples = signal<SpeedSample[]>([]);
 	public readonly amuleLog = signal<LogLine[]>([]);
@@ -136,7 +136,7 @@ export class WsService {
 				break;
 
 			case 'media:transfers':
-				this.transfers.set(msg.data as TransfersResponse);
+				this.transfers.set(msg.data as MediaTransfersResponse);
 				break;
 
 			case 'amule:upload-queue':

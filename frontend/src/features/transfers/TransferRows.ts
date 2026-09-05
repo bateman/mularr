@@ -1,6 +1,6 @@
 import { inject, computed, componentList, Signal } from 'chispa';
 import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
-import { Transfer } from '../../services/MediaApiService';
+import { MediaTransfer } from '../../services/MediaApiService';
 import { ExtensionsApiService } from '../../services/ExtensionsApiService';
 import { ContextMenuService, ContextMenuItem } from '../../services/ContextMenuService';
 import { TransfersContextService } from '../../services/TransfersContextService';
@@ -27,7 +27,7 @@ const numberToColor = (num: number) => {
 	return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 };
 
-async function buildContextMenuActions(t: Signal<Transfer>, selectionMgr: RowSelectionManager): Promise<ContextMenuItem[]> {
+async function buildContextMenuActions(t: Signal<MediaTransfer>, selectionMgr: RowSelectionManager): Promise<ContextMenuItem[]> {
 	const extensionsApi = inject(ExtensionsApiService);
 	const ctx = inject(TransfersContextService);
 	const dialogService = inject(DialogService);
@@ -40,7 +40,9 @@ async function buildContextMenuActions(t: Signal<Transfer>, selectionMgr: RowSel
 	const targetHashes = allHashes.length > 0 ? allHashes : hash ? [hash] : [];
 	// Resolve the selected transfers so multi-selection menus reflect all of them
 	const allTransfers = ctx.transfers.get();
-	const targetTransfers = targetHashes.map((h) => allTransfers.find((x) => x.hash === h) ?? (h === hash ? transfer : null)).filter(Boolean) as Transfer[];
+	const targetTransfers = targetHashes
+		.map((h) => allTransfers.find((x) => x.hash === h) ?? (h === hash ? transfer : null))
+		.filter(Boolean) as MediaTransfer[];
 	const multi = targetHashes.length > 1;
 
 	// ---- Details action (single selection only) ----
@@ -143,7 +145,7 @@ interface TransferListProps {
 	onRowClick: (hash: string) => void;
 }
 
-export const TransfersRows = componentList<Transfer, TransferListProps>(
+export const TransfersRows = componentList<MediaTransfer, TransferListProps>(
 	(t, i, l, props) => {
 		const selectionMgr = props!.selectionMgr;
 		const onRowClick = props!.onRowClick;

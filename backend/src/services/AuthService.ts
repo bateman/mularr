@@ -4,12 +4,10 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import { Response } from 'express';
 import { __APP_CONFIG__ } from '../app-env';
+import type { AuthStatus } from '../types/AuthTypes';
 
-export interface AuthStatus {
-	enabled: boolean;
-	hasCredentials: boolean;
-	hasApiKey: boolean;
-}
+// Wire contract shared with the frontend (see src/types/AuthTypes.ts), re-exported for backend consumers
+export type { AuthStatus };
 
 /** Constant-time comparison, so a wrong credential can't be narrowed down character by character through response timing. */
 function safeEqual(expected: string, actual: string): boolean {

@@ -9,9 +9,9 @@ import { container } from './container/ServiceContainer';
 import { MainDB, DownloadDbRecord } from '../services/db/MainDB';
 import { AppEvents, toDownloadEventPayload } from './AppEvents';
 import { buildEd2kLink, parseEd2kLink } from './eD2kTools';
-import { ChunkInfo, TransferSource, TransferSourceNameCount } from './mediaprovider/types';
+import { MediaCategory, ChunkInfo, TransferSource, TransferSourceNameCount } from './mediaprovider/types';
 
-function normalizeCategoryName(name: string | null, ctgs: AmuleCategory[]): string {
+function normalizeCategoryName(name: string | null, ctgs: MediaCategory[]): string {
 	const DEFAULT_VALUE = 'default';
 	if (!name || !name.trim()) return DEFAULT_VALUE;
 	const found = ctgs.find((c) => c.name === name);
@@ -20,11 +20,19 @@ function normalizeCategoryName(name: string | null, ctgs: AmuleCategory[]): stri
 	return name;
 }
 
-export const getCatByName = (ctgs: AmuleCategory[], name: string) => {
+export const getCatByName = (ctgs: MediaCategory[], name: string) => {
 	const cat = ctgs.find((c) => c.name === name);
 	if (!cat) return ctgs.find((c) => c.id === 0); // Default category
 	return cat;
 };
+
+/**
+ * The EC library types every category field as optional, but the daemon always sends them. Normalize
+ * once here so the rest of the app (and the frontend, through the wire contract) can rely on them.
+ */
+function toCategory(c: AmuleCategory): MediaCategory {
+	return { id: c.id ?? 0, name: c.name ?? '', path: c.path ?? '', comment: c.comment ?? '', color: c.color ?? 0, priority: c.priority ?? 0 };
+}
 
 const execPromise = util.promisify(exec);
 
@@ -314,7 +322,7 @@ export class AmuleService {
 		}
 	}
 
-	async getTransfers(): Promise<{ raw: string; list: Download[]; categories: AmuleCategory[] }> {
+	async getTransfers(): Promise<{ raw: string; list: Download[]; categories: MediaCategory[] }> {
 		try {
 			const queue = await this.client.getDownloadQueueWithSources();
 			//const queue = await this.client.getDownloadQueue();
@@ -677,10 +685,10 @@ export class AmuleService {
 	/**
 	 * Get all categories from aMule
 	 */
-	async getCategories(): Promise<AmuleCategory[]> {
+	async getCategories(): Promise<MediaCategory[]> {
 		try {
 			const cats = await this.client.getCategories();
-			return cats || [];
+			return (cats || []).map(toCategory);
 		} catch (e: any) {
 			console.error('❌ EC Client getCategories Error:', e.message);
 			// Return empty list on error
@@ -691,8 +699,8 @@ export class AmuleService {
 	/**
 	 * Create a category. If id is not provided, choose next available id.
 	 */
-	async createCategory(data: Partial<AmuleCategory>): Promise<AmuleCategory> {
-		const category: AmuleCategory = {
+	async createCategory(data: Partial<MediaCategory>): Promise<MediaCategory> {
+		const category: MediaCategory = {
 			id: 0,
 			name: data.name || `New Category`,
 			path: data.path || '',
@@ -705,7 +713,7 @@ export class AmuleService {
 			await this.client.createCategory(category);
 			const ctgs = await this.getCategories();
 			// Get ctg with highest ID - should be the one we just created
-			const created = ctgs.reduce((prev, current) => (prev.id! > current.id! ? prev : current));
+			const created = ctgs.reduce((prev, current) => (prev.id > current.id ? prev : current));
 			if (created.name !== category.name) {
 				throw new Error('Failed to verify created category');
 			}
@@ -719,12 +727,12 @@ export class AmuleService {
 	/**
 	 * Update a category by id using available client methods.
 	 */
-	async updateCategory(id: number, data: Partial<AmuleCategory>): Promise<AmuleCategory> {
+	async updateCategory(id: number, data: Partial<MediaCategory>): Promise<MediaCategory> {
 		const cats = await this.getCategories();
 		const existing = cats.find((c) => c.id === id);
 		if (!existing) throw new Error(`Category with id ${id} not found`);
 
-		const updated: AmuleCategory = {
+		const updated: MediaCategory = {
 			...existing,
 			...data,
 			id,
@@ -736,7 +744,7 @@ export class AmuleService {
 
 			if (id !== 0 && data.name && data.name !== existing.name) {
 				try {
-					this.db.updateCategoryName(existing.name || '', data.name);
+					this.db.updateCategoryName(existing.name, data.name);
 				} catch (e) {
 					console.error('Failed to update category name in DB:', e);
 				}

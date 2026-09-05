@@ -176,7 +176,7 @@ export class AmuleController {
 			const cat = await this.amuleService.updateCategory(parseInt(id as string), data);
 			const newPath: string | undefined = data.path;
 			if (moveFiles && newPath !== undefined && oldPath !== newPath) {
-				await this.mediaProviderService.moveCategoryCompletedFiles(cat.name ?? '', oldPath ?? '', newPath);
+				await this.mediaProviderService.moveCategoryCompletedFiles(cat.name, oldPath ?? '', newPath);
 			}
 			res.json(cat);
 		} catch (e: any) {

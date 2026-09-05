@@ -1,18 +1,17 @@
 import { component, computed, effect, Signal } from 'chispa';
-import { Transfer } from '../../services/MediaApiService';
-import { CHUNK_STATUS } from '../../services/AmuleApiService';
+import { CHUNK_STATUS, type ChunkStatus, type MediaTransfer } from '../../services/MediaApiService';
 import tpl from './TransferProgressBar.html';
 import './TransferProgressBar.css';
 
 export interface TransferProgressBarProps {
-	transfer: Signal<Transfer>;
+	transfer: Signal<MediaTransfer>;
 	/**
 	 * When true, detailed chunk visualization is shown whenever chunk data exists.
 	 */
 	preferChunked: boolean;
 }
 
-const CHUNK_COLOR: Record<CHUNK_STATUS, string> = {
+const CHUNK_COLOR: Record<ChunkStatus, string> = {
 	[CHUNK_STATUS.UNAVAILABLE]: '#f90000',
 	[CHUNK_STATUS.AVAILABLE]: '#00d2ff',
 	[CHUNK_STATUS.COMPLETE]: '#686868',
@@ -24,7 +23,7 @@ function getAvailableColor(availability: number): string {
 	return `rgb(0, ${g}, 255)`;
 }
 
-function drawChunks(canvas: HTMLCanvasElement, states: CHUNK_STATUS[], availability: number[]): void {
+function drawChunks(canvas: HTMLCanvasElement, states: ChunkStatus[], availability: number[]): void {
 	const cssWidth = canvas.clientWidth;
 	const cssHeight = canvas.clientHeight;
 	if (cssWidth <= 0 || cssHeight <= 0 || states.length === 0) return;

@@ -1,5 +1,5 @@
 import { inject, component, signal } from 'chispa';
-import { CategoriesApiService, Category } from '../../services/CategoriesApiService';
+import { CategoriesApiService, MediaCategory } from '../../services/CategoriesApiService';
 import { DialogService } from '../../services/DialogService';
 import { smartLoad } from '../../utils/scheduling';
 import { CategoryFormModal } from './components/CategoryFormModal';
@@ -15,7 +15,7 @@ const numberToColor = (num: number) => {
 export const CategoriesView = component(() => {
 	const apiService = inject(CategoriesApiService);
 	const dialogService = inject(DialogService);
-	const categories = signal<Category[]>([]);
+	const categories = signal<MediaCategory[]>([]);
 
 	const loadCategories = smartLoad(async () => {
 		const data = await apiService.getAll();
@@ -24,7 +24,7 @@ export const CategoriesView = component(() => {
 
 	loadCategories();
 
-	const openModal = (cat?: Category) => {
+	const openModal = (cat?: MediaCategory) => {
 		dialogService.open({
 			title: cat ? 'Edit Category' : 'New Category',
 			render: (close) =>

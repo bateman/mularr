@@ -1,4 +1,5 @@
 import { BaseApiService } from './BaseApiService';
+import type { MediaCategory, MediaTransfersResponse, MediaSearchResponse, MediaSearchStatusResponse } from './MediaApiService';
 
 export interface ConnectionState {
 	ed2kConnected?: boolean;
@@ -132,66 +133,6 @@ export interface ServersResponse {
 	};
 }
 
-export enum CHUNK_STATUS {
-	UNAVAILABLE = 0,
-	AVAILABLE = 1,
-	COMPLETE = 2,
-	DOWNLOADING = 3,
-}
-
-interface ChunkInfo {
-	chunkStates: CHUNK_STATUS[];
-	chunkAvailability: number[];
-	partCount: number;
-	sizeFull: number;
-}
-
-export interface TransferSource {
-	clientName?: string;
-	ip?: string;
-	port?: number;
-	software?: string;
-	softwareVersion?: string;
-	downloadSpeed?: number;
-	uploadSpeed?: number;
-	availableParts?: number;
-	remoteFilename?: string;
-	sourceFrom?: number;
-	remoteQueueRank?: number;
-	waitingPosition?: number;
-}
-
-export interface TransferSourceNameCount {
-	name: string;
-	count: number;
-}
-
-export interface Transfer extends AmuleFile {
-	completed?: number;
-	speed?: number;
-	progress?: number;
-	sourceCount?: number;
-	priority?: number;
-	status?: string;
-	statusId?: number;
-	stopped?: boolean;
-	remaining?: number;
-	categoryName?: string;
-	addedOn?: number;
-	isCompleted?: boolean;
-	provider?: string;
-	link?: string;
-	/** Resolved absolute path to the file on disk. */
-	filePath?: string;
-	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
-	sourceName?: string;
-	chunkInfo?: ChunkInfo;
-	sources?: TransferSource[];
-	sourceNames?: TransferSourceNameCount[];
-	/** Raw provider payload (aMule keeps chunk info here). */
-	providerData?: unknown;
-}
-
 export interface AmuleUpDownClient {
 	clientName?: string;
 	userHashHexString?: string;
@@ -241,23 +182,6 @@ export interface UploadQueueResponse {
 	list: AmuleUpDownClient[];
 }
 
-export interface Category {
-	id: number;
-	name: string;
-	path: string;
-	comment: string;
-	color: number;
-	priority: number;
-	/** Effective directory on disk: category.path if set, otherwise aMule's global IncomingDir */
-	resolvedPath?: string;
-}
-
-export interface TransfersResponse {
-	raw: string;
-	list: Transfer[];
-	categories: Category[];
-}
-
 export interface AmuleFile {
 	rawLine: string;
 	name?: string;
@@ -284,32 +208,6 @@ export interface AmuleFile {
 export interface SharedResponse {
 	raw: string;
 	list: AmuleFile[];
-}
-
-export interface SearchResult {
-	name: string;
-	size: number;
-	hash: string;
-	link?: string;
-	type?: string;
-	sourceCount?: string;
-	downloadStatus?: number;
-	completeSourceCount?: string;
-	provider?: string;
-	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
-	sourceName?: string;
-}
-
-export interface SearchResultsResponse {
-	raw: string;
-	list: SearchResult[];
-	/** Number of results hidden because their hash is blacklisted. */
-	blacklistedCount?: number;
-}
-
-export interface SearchStatusResponse {
-	raw: string;
-	progress: number;
 }
 
 export interface UpdateResponse {
@@ -352,8 +250,8 @@ export class AmuleApiService extends BaseApiService {
 		return this.request<ServersResponse>('/servers');
 	}
 
-	async getTransfers(): Promise<TransfersResponse> {
-		return this.request<TransfersResponse>('/transfers');
+	async getTransfers(): Promise<MediaTransfersResponse> {
+		return this.request<MediaTransfersResponse>('/transfers');
 	}
 
 	async clearCompletedTransfers(hashes?: string[]): Promise<SuccessResponse> {
@@ -378,20 +276,20 @@ export class AmuleApiService extends BaseApiService {
 		});
 	}
 
-	async getSearchResults(): Promise<SearchResultsResponse> {
-		return this.request<SearchResultsResponse>('/search/results');
+	async getSearchResults(): Promise<MediaSearchResponse> {
+		return this.request<MediaSearchResponse>('/search/results');
 	}
 
-	async getSearchStatus(): Promise<SearchStatusResponse> {
-		return this.request<SearchStatusResponse>('/search/status');
+	async getSearchStatus(): Promise<MediaSearchStatusResponse> {
+		return this.request<MediaSearchStatusResponse>('/search/status');
 	}
 
 	async getUploadQueue(): Promise<UploadQueueResponse> {
 		return this.request<UploadQueueResponse>('/upload-queue');
 	}
 
-	async getCategories(): Promise<Category[]> {
-		return this.request<Category[]>('/categories');
+	async getCategories(): Promise<MediaCategory[]> {
+		return this.request<MediaCategory[]>('/categories');
 	}
 
 	async setFileCategory(hash: string, categoryId: number): Promise<SuccessResponse> {

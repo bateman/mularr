@@ -1,8 +1,7 @@
-export interface AuthStatus {
-	enabled: boolean;
-	hasCredentials: boolean;
-	hasApiKey: boolean;
-}
+import type { AuthStatus } from './apiTypes';
+
+// Wire contract owned by the backend (see apiTypes.ts)
+export type { AuthStatus };
 
 const TOKEN_KEY = 'mularr.auth.token';
 

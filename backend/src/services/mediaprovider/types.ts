@@ -1,106 +1,23 @@
-import type { AmuleCategory } from 'amule-ec-client';
+import type { MediaTransfer, MediaSearchResult } from '../../types/MediaTypes';
 
 // ---------------------------------------------------------------------------
 // Shared transfer / search types
 // ---------------------------------------------------------------------------
 
-export enum CHUNK_STATUS {
-	UNAVAILABLE = 0,
-	AVAILABLE = 1,
-	COMPLETE = 2,
-	DOWNLOADING = 3,
-}
-
-export interface ChunkInfo {
-	chunkStates: CHUNK_STATUS[];
-	chunkAvailability: number[];
-	partCount: number;
-	sizeFull: number;
-}
-
-export interface TransferSource {
-	clientName?: string;
-	ip?: string;
-	port?: number;
-	software?: string;
-	softwareVersion?: string;
-	downloadSpeed?: number;
-	uploadSpeed?: number;
-	availableParts?: number;
-	remoteFilename?: string;
-	sourceFrom?: number;
-	remoteQueueRank?: number;
-	waitingPosition?: number;
-}
-
-export interface TransferSourceNameCount {
-	name: string;
-	count: number;
-}
-
-export interface MediaTransfer {
-	rawLine: string;
-	name?: string;
-	size?: number;
-	completed?: number;
-	speed?: number;
-	isCompleted?: boolean;
-	progress?: number;
-	sourceCount?: number;
-	priority?: number;
-	status?: string;
-	statusId?: number;
-	stopped?: boolean;
-	remaining?: number;
-	hash?: string;
-	link?: string;
-	timeLeft?: number;
-	categoryName?: string | null;
-	addedOn?: string | null;
-	provider?: string;
-	/** Resolved absolute path to the file on disk. Populated by MediaProviderService. */
-	filePath?: string;
-	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
-	sourceName?: string;
-	/** Chunk information for the transfer. */
-	chunkInfo?: ChunkInfo;
-	/** Peers currently related to this transfer (download sources). */
-	sources?: TransferSource[];
-	/** Aggregated source names (client names grouped by count). */
-	sourceNames?: TransferSourceNameCount[];
-}
-
-export interface MediaSearchResult {
-	name: string;
-	size: number;
-	hash: string;
-	link?: string;
-	sourceCount?: number;
-	completeSourceCount?: number;
-	downloadStatus?: number;
-	type?: string;
-	provider: string;
-	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
-	sourceName?: string;
-}
-
-export interface MediaTransfersResponse {
-	raw: string;
-	list: MediaTransfer[];
-	categories: AmuleCategory[];
-}
-
-export interface MediaSearchResponse {
-	raw: string;
-	list: MediaSearchResult[];
-	/** Number of results hidden because their hash is blacklisted. */
-	blacklistedCount?: number;
-}
-
-export interface MediaSearchStatusResponse {
-	raw: string;
-	progress: number; // 0–1
-}
+// The wire contract lives in src/types (the frontend imports it from there too) and is re-exported
+// here so backend code keeps importing from this module.
+export { CHUNK_STATUS } from '../../types/MediaTypes';
+export type {
+	ChunkInfo,
+	TransferSource,
+	TransferSourceNameCount,
+	MediaCategory,
+	MediaTransfer,
+	MediaTransfersResponse,
+	MediaSearchResult,
+	MediaSearchResponse,
+	MediaSearchStatusResponse,
+} from '../../types/MediaTypes';
 
 // ---------------------------------------------------------------------------
 // IMediaProvider contract
