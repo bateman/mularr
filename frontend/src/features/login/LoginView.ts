@@ -47,5 +47,6 @@ export const LoginView = component<ILoginViewProps>(({ onLogin }) => {
 			inner: () => (loading.get() ? 'Signing in...' : 'Sign In'),
 			disabled: () => loading.get(),
 		},
+		appVersion: { inner: `v${__APP_MANIFEST__.version}` },
 	});
 });
