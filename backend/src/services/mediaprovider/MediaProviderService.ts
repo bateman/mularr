@@ -15,6 +15,8 @@ export class MediaProviderService {
 	private providers: IMediaProvider[] = [];
 	private readonly db = container.get(MainDB);
 	private readonly events = container.get(AppEvents);
+	private readonly amuleService = container.get(AmuleService);
+	private readonly amuledService = container.get(AmuledService);
 	public readonly searchHistory = new SearchHistory();
 
 	constructor() {
@@ -77,7 +79,7 @@ export class MediaProviderService {
 
 		let categories: AmuleCategory[] = [];
 		try {
-			categories = await container.get(AmuleService).getCategories();
+			categories = await this.amuleService.getCategories();
 		} catch (_e) {}
 
 		// Enrich each transfer with its resolved absolute file path
@@ -199,7 +201,7 @@ export class MediaProviderService {
 	// ---- Categories (amule-specific, proxied) ----------------------------------
 
 	async getCategories(): Promise<AmuleCategory[]> {
-		return container.get(AmuleService).getCategories();
+		return this.amuleService.getCategories();
 	}
 
 	/**
@@ -209,9 +211,7 @@ export class MediaProviderService {
 	 * (no reliance on aMule's shared-files hash list).
 	 */
 	async setFileCategory(hashHex: string, categoryId: number, moveFiles = false): Promise<void> {
-		const amule = container.get(AmuleService);
-
-		const categories = await amule.getCategories();
+		const categories = await this.amuleService.getCategories();
 		const newCat = categories.find((c) => c.id === categoryId);
 
 		// Resolve old location before updating DB
@@ -220,7 +220,7 @@ export class MediaProviderService {
 		const oldCat = oldCatName ? categories.find((c) => c.name === oldCatName) : categories.find((c) => c.id === 0);
 
 		// Delegate EC protocol update to AmuleService
-		await amule.setFileCategory(hashHex, categoryId);
+		await this.amuleService.setFileCategory(hashHex, categoryId);
 
 		// Update our DB record with the new category name (or empty string for "none")
 		const catName = categoryId === 0 ? null : newCat ? newCat.name : null;
@@ -329,7 +329,7 @@ export class MediaProviderService {
 	async getIncomingDir(): Promise<string> {
 		if (process.env.AMULE_INCOMING_DIR) return process.env.AMULE_INCOMING_DIR;
 		try {
-			const config = await container.get(AmuledService).getConfig();
+			const config = await this.amuledService.getConfig();
 			if (config.incomingDir) return config.incomingDir;
 		} catch (_e) {}
 		return '/incoming'; // last-resort fallback

@@ -12,12 +12,12 @@ function isHttpUrl(value: string): boolean {
 }
 
 export class ExtensionsService {
-	private db: MainDB;
+	private readonly db = container.get(MainDB);
+	private readonly events = container.get(AppEvents);
 
 	constructor() {
-		this.db = container.get(MainDB);
 		// Forward every app event to the 'webhook' extensions subscribed to it
-		container.get(AppEvents).onAny((event, payload) => this.dispatchToWebhooks(event, payload));
+		this.events.onAny((event, payload) => this.dispatchToWebhooks(event, payload));
 	}
 
 	// CRUD Extensions

@@ -3,7 +3,7 @@ import { container } from './container/ServiceContainer';
 import { GluetunService } from './GluetunService';
 
 export class SystemService {
-	private gluetunService = container.get(GluetunService);
+	private readonly gluetunService = container.get(GluetunService);
 
 	public async getSystemInfo(): Promise<any> {
 		const info: any = {};

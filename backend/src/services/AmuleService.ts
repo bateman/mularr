@@ -125,10 +125,9 @@ export class AmuleService {
 	private readonly password = process.env.AMULE_EC_CLIENT_PASSWORD || 'secret';
 	private readonly client = new AmuleClient({ host: this.host, port: parseInt(this.port), password: this.password, timeout: 5000, requestTimeout: 5000 });
 	private readonly events = container.get(AppEvents);
-	private db: MainDB;
+	private readonly db = container.get(MainDB);
 
 	constructor() {
-		this.db = container.get(MainDB);
 		//this.client.connection.setDebug(true);
 	}
 

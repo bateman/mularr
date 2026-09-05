@@ -3,9 +3,7 @@ import { container } from '../services/container/ServiceContainer';
 import { AuthService } from '../services/AuthService';
 
 export class AuthController {
-	private get authService() {
-		return container.get(AuthService);
-	}
+	private readonly authService = container.get(AuthService);
 
 	getStatus = (_req: Request, res: Response) => {
 		res.json(this.authService.getStatus());

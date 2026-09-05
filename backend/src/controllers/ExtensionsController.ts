@@ -3,11 +3,7 @@ import { container } from '../services/container/ServiceContainer';
 import { ExtensionsService } from '../services/ExtensionsService';
 
 export class ExtensionsController {
-	private readonly service: ExtensionsService;
-
-	constructor() {
-		this.service = container.get(ExtensionsService);
-	}
+	private readonly service = container.get(ExtensionsService);
 
 	list = (req: Request, res: Response) => {
 		try {

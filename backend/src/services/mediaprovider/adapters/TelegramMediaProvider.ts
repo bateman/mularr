@@ -46,7 +46,7 @@ function toAmuleDownloadStatus(downloadStatus?: DownloadStatus): number {
 // Helper: build a MediaTransfer from a Telegram DB record
 // ---------------------------------------------------------------------------
 
-function buildTelegramTransfer(dbRecord: DownloadDbRecord, indexer: TelegramIndexerService, tempDir?: string): MediaTransfer {
+function buildTelegramTransfer(dbRecord: DownloadDbRecord, indexer: TelegramIndexerService, db: MainDB, events: AppEvents, tempDir?: string): MediaTransfer {
 	let statusText = dbRecord.is_completed ? 'completed' : '';
 	let progress = dbRecord.is_completed ? 1 : 0;
 	let completed = dbRecord.is_completed ? dbRecord.size : 0;
@@ -67,9 +67,9 @@ function buildTelegramTransfer(dbRecord: DownloadDbRecord, indexer: TelegramInde
 			}
 
 			if (dlStatus.status === 'completed' && !dbRecord.is_completed) {
-				container.get(MainDB).updateDownloadCompletion(dbRecord.hash, true);
+				db.updateDownloadCompletion(dbRecord.hash, true);
 				dbRecord.is_completed = 1;
-				container.get(AppEvents).emit('download.completed', toDownloadEventPayload(dbRecord, 'telegram'));
+				events.emit('download.completed', toDownloadEventPayload(dbRecord, 'telegram'));
 			}
 		}
 	} catch (_e) {
@@ -120,6 +120,8 @@ export class TelegramMediaProvider implements IMediaProvider {
 	// Matches Telegram's getMessages batch limit so verifying a page costs one call per chat
 	private readonly PAGE_SIZE = 100;
 	private readonly indexer = container.get(TelegramIndexerService);
+	private readonly db = container.get(MainDB);
+	private readonly events = container.get(AppEvents);
 	private readonly dirHelper = new TelegramDownloadDirectoryHelper();
 
 	canHandleDownload(link: string): boolean {
@@ -179,13 +181,12 @@ export class TelegramMediaProvider implements IMediaProvider {
 		const messageId = parseInt(parts[2]);
 		const hash = link;
 
-		const db = container.get(MainDB);
 		const msg = this.indexer.getFileInfo(chatId, messageId);
 
 		if (msg) {
-			const existing = db.getDownload(hash);
+			const existing = this.db.getDownload(hash);
 			if (!existing) {
-				db.addDownload(hash, msg.file_name || 'Unknown', Number(msg.file_size) || 0, null, 'telegram');
+				this.db.addDownload(hash, msg.file_name || 'Unknown', Number(msg.file_size) || 0, null, 'telegram');
 				console.log('[TelegramMediaProvider] Added to DB:', hash);
 			}
 			this.indexer.startDownload(chatId, messageId, hash).catch((err: any) => {
@@ -202,7 +203,7 @@ export class TelegramMediaProvider implements IMediaProvider {
 		} catch (e) {
 			console.error('[TelegramMediaProvider] removeDownload error:', e);
 		}
-		container.get(MainDB).deleteDownload(hash);
+		this.db.deleteDownload(hash);
 	}
 
 	async pauseDownload(hash: string): Promise<void> {
@@ -239,20 +240,18 @@ export class TelegramMediaProvider implements IMediaProvider {
 	}
 
 	async getTransfers(): Promise<MediaTransfer[]> {
-		const db = container.get(MainDB);
-		const records = db.getAllDownloads().filter((r) => r.provider === 'telegram');
+		const records = this.db.getAllDownloads().filter((r) => r.provider === 'telegram');
 		const tempDir = await this.getTempDir();
-		return records.map((r) => buildTelegramTransfer(r, this.indexer, tempDir));
+		return records.map((r) => buildTelegramTransfer(r, this.indexer, this.db, this.events, tempDir));
 	}
 
 	async clearCompletedTransfers(hashes?: string[]): Promise<void> {
-		const db = container.get(MainDB);
 		if (hashes && hashes.length > 0) {
 			const telegram = hashes.filter((h) => h.startsWith('telegram:'));
-			if (telegram.length > 0) db.clearCompletedDownloads(telegram);
+			if (telegram.length > 0) this.db.clearCompletedDownloads(telegram);
 		} else {
-			const records = db.getAllDownloads().filter((r) => r.provider === 'telegram' && r.is_completed);
-			if (records.length > 0) db.clearCompletedDownloads(records.map((r) => r.hash));
+			const records = this.db.getAllDownloads().filter((r) => r.provider === 'telegram' && r.is_completed);
+			if (records.length > 0) this.db.clearCompletedDownloads(records.map((r) => r.hash));
 		}
 	}
 }

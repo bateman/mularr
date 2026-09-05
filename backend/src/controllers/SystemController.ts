@@ -3,7 +3,7 @@ import { container } from '../services/container/ServiceContainer';
 import { SystemService } from '../services/SystemService';
 
 export class SystemController {
-	private systemService = container.get(SystemService);
+	private readonly systemService = container.get(SystemService);
 
 	public getSystemInfo = async (req: Request, res: Response) => {
 		try {

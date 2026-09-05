@@ -34,17 +34,12 @@ export class SpeedHistoryService {
 	private intervalId: NodeJS.Timeout | null = null;
 	private sampleCallbacks: ((sample: SpeedSample) => void)[] = [];
 
+	private readonly mediaProvider = container.get(MediaProviderService);
+	private readonly amuleService = container.get(AmuleService);
+
 	/** Register a callback that is invoked each time a new sample is recorded. */
 	public onSample(cb: (sample: SpeedSample) => void): void {
 		this.sampleCallbacks.push(cb);
-	}
-
-	// Lazy-resolve services so the service can be constructed before they are registered
-	private get mediaProvider(): MediaProviderService {
-		return container.get(MediaProviderService);
-	}
-	private get amuleService(): AmuleService {
-		return container.get(AmuleService);
 	}
 
 	public start(): void {

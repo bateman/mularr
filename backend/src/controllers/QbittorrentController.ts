@@ -15,22 +15,22 @@ export class QbittorrentController {
 	private readonly amuledService = container.get(AmuledService);
 	private readonly mediaProviderService = container.get(MediaProviderService);
 	private readonly extensionsService = container.get(ExtensionsService);
+	private readonly authService = container.get(AuthService);
 
 	// qBittorrent API: POST /api/v2/auth/login
 	login = async (req: Request, res: Response) => {
-		const authService = container.get(AuthService);
 		const { username, password } = req.body;
 
 		// If auth is not enabled, always succeed (open mode)
-		if (!authService.isAuthEnabled()) {
-			authService.setSidCookieOpenMode(res);
+		if (!this.authService.isAuthEnabled()) {
+			this.authService.setSidCookieOpenMode(res);
 			res.send('Ok.');
 			return;
 		}
 
 		// Accept username/password matching AUTH credentials, or API_KEY as password
-		const validCredentials = authService.validateCredentials(username ?? '', password ?? '');
-		const validApiKey = authService.validateApiKey(password ?? '');
+		const validCredentials = this.authService.validateCredentials(username ?? '', password ?? '');
+		const validApiKey = this.authService.validateApiKey(password ?? '');
 
 		if (!validCredentials && !validApiKey) {
 			res.send('Fails.');
@@ -41,11 +41,11 @@ export class QbittorrentController {
 		// consistent format regardless of whether login was via credentials or API key.
 		// API-key logins get a non-expiring token so integrations like Sonarr/Radarr
 		// are never broken by token expiry (they do not re-authenticate on 401).
-		const session = authService.generateToken(validCredentials ? username : '__apikey__', validApiKey);
+		const session = this.authService.generateToken(validCredentials ? username : '__apikey__', validApiKey);
 
 		console.log('[QbittorrentController] Login successful for Sonarr/Radarr');
 		// Max-Age matches the JWT lifetime — cookie and token expire together.
-		authService.setSidCookie(res, session);
+		this.authService.setSidCookie(res, session);
 		res.send('Ok.');
 	};
 
