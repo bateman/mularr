@@ -1,5 +1,5 @@
 import './styles/style.css';
-import { inject, appendChild } from 'chispa';
+import { inject, mountRoot } from 'chispa';
 import { LocalPrefsService } from './services/LocalPrefsService';
 import { AuthApiService } from './services/AuthApiService';
 import { App } from './layout/App';
@@ -12,8 +12,7 @@ const savedTheme = prefs.getTheme();
 document.documentElement.setAttribute('data-theme', savedTheme);
 
 const mountApp = () => {
-	document.body.innerHTML = '';
-	appendChild(document.body, App({ routes }));
+	mountRoot(App({ routes }), document.body);
 };
 
 (async () => {
@@ -26,7 +25,7 @@ const mountApp = () => {
 	}
 
 	if (status.enabled && !authService.isLoggedIn()) {
-		appendChild(document.body, LoginView({ onLogin: mountApp }));
+		mountRoot(LoginView({ onLogin: mountApp }), document.body);
 	} else {
 		mountApp();
 	}
