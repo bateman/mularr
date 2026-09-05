@@ -375,6 +375,13 @@ export const SearchView = component(() => {
 		searchProgressText: {
 			inner: () => `${Math.floor(Math.min(1, searchProgress.get()) * 100)}%`,
 		},
+		resultsCountLabel: {
+			style: { display: () => (visibleResults.get().length > 0 ? '' : 'none') },
+			inner: () => {
+				const n = visibleResults.get().length;
+				return `${n} result${n === 1 ? '' : 's'}`;
+			},
+		},
 		blacklistHiddenLabel: {
 			style: { display: () => (blacklistedCount.get() > 0 ? '' : 'none') },
 			inner: () => {
