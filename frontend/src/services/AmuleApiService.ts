@@ -390,20 +390,6 @@ export class AmuleApiService extends BaseApiService {
 		return this.request<UploadQueueResponse>('/upload-queue');
 	}
 
-	async addDownload(link: string): Promise<SuccessResponse> {
-		return this.request<SuccessResponse>('/download', {
-			method: 'POST',
-			body: JSON.stringify({ link }),
-		});
-	}
-
-	async sendDownloadCommand(hash: string, command: 'pause' | 'resume' | 'stop' | 'cancel'): Promise<SuccessResponse> {
-		return this.request<SuccessResponse>('/download/command', {
-			method: 'POST',
-			body: JSON.stringify({ hash, command }),
-		});
-	}
-
 	async getCategories(): Promise<Category[]> {
 		return this.request<Category[]>('/categories');
 	}

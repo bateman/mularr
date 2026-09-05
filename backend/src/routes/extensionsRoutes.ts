@@ -9,6 +9,7 @@ export const extensionsRoutes = () => {
 	router.post('/', controller.add);
 	router.delete('/:id', controller.delete);
 	router.patch('/:id/toggle', controller.toggle);
+	router.patch('/:id/config', controller.updateConfig);
 
 	return router;
 };

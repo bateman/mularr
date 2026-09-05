@@ -1,5 +1,6 @@
 import { container } from './container/ServiceContainer';
 import { AmuledService } from './AmuledService';
+import { AppEvents } from './AppEvents';
 import { GluetunService } from './GluetunService';
 import { TelegramBotService } from './TelegramBotService';
 
@@ -13,6 +14,7 @@ export class MularrMonitoringService {
 
 	private readonly amuledService = container.get(AmuledService);
 	private readonly gluetunService = container.get(GluetunService);
+	private readonly events = container.get(AppEvents);
 
 	private get telegramService(): TelegramBotService | null {
 		try {
@@ -53,6 +55,7 @@ export class MularrMonitoringService {
 	}
 
 	private async notify(message: string) {
+		this.events.emit('system.alert', { message });
 		const tg = this.telegramService;
 		if (tg) {
 			await tg.sendMessage(`<b>[Mularr Monitor]</b>\n${message}`);

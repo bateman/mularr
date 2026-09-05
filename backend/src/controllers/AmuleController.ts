@@ -139,30 +139,6 @@ export class AmuleController {
 		}
 	};
 
-	download = async (req: Request, res: Response) => {
-		try {
-			const { link } = req.body;
-			await this.amuleService.addDownload(link);
-			res.json({ success: true });
-		} catch (e: any) {
-			res.status(500).json({ error: e.message });
-		}
-	};
-
-	downloadCommand = async (req: Request, res: Response) => {
-		try {
-			const { hash, command } = req.body;
-			if (command === 'pause') await this.amuleService.pauseDownload(hash);
-			else if (command === 'resume') await this.amuleService.resumeDownload(hash);
-			else if (command === 'stop') await this.amuleService.stopDownload(hash);
-			else if (command === 'cancel') await this.amuleService.removeDownload(hash);
-			else throw new Error('Invalid command');
-			res.json({ success: true });
-		} catch (e: any) {
-			res.status(500).json({ error: e.message });
-		}
-	};
-
 	getCategories = async (req: Request, res: Response) => {
 		try {
 			const categories = await this.amuleService.getCategories();

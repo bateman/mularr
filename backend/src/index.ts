@@ -6,6 +6,7 @@ import path from 'path';
 
 import { __APP_MANIFEST__ } from './app-env';
 import { container } from './services/container/ServiceContainer';
+import { AppEvents } from './services/AppEvents';
 import { MainDB } from './services/db/MainDB';
 import { AmuleService } from './services/AmuleService';
 import { TelegramBotService } from './services/TelegramBotService';
@@ -42,6 +43,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // -- Initialize & register services in container ------------------------------
+
+// Event bus goes first so any service can emit or subscribe from its constructor
+container.register(AppEvents, new AppEvents());
 
 // Initialize Auth Service (must be first so middleware can use it)
 const authService = new AuthService(path.dirname(dbPath));

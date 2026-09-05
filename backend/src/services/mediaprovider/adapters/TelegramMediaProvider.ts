@@ -1,6 +1,7 @@
 import { container } from '../../container/ServiceContainer';
 import { type TelegramIndexerSearchResult, TelegramIndexerService } from '../../TelegramIndexerService';
 import { MainDB, DownloadDbRecord } from '../../db/MainDB';
+import { AppEvents, toDownloadEventPayload } from '../../AppEvents';
 import type { IMediaProvider, MediaSearchResult, MediaTransfer } from '../types';
 import { DownloadStatus, TelegramDownloadDirectoryHelper } from '../../TelegramDownloadManager';
 import * as nodePath from 'path';
@@ -68,6 +69,7 @@ function buildTelegramTransfer(dbRecord: DownloadDbRecord, indexer: TelegramInde
 			if (dlStatus.status === 'completed' && !dbRecord.is_completed) {
 				container.get(MainDB).updateDownloadCompletion(dbRecord.hash, true);
 				dbRecord.is_completed = 1;
+				container.get(AppEvents).emit('download.completed', toDownloadEventPayload(dbRecord, 'telegram'));
 			}
 		}
 	} catch (_e) {

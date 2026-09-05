@@ -5,6 +5,7 @@ import { container } from '../container/ServiceContainer';
 import { AmuleService } from '../AmuleService';
 import { AmuledService } from '../AmuledService';
 import { MainDB, blacklistEntryMatches, type DownloadDbRecord } from '../db/MainDB';
+import { AppEvents, toDownloadEventPayload } from '../AppEvents';
 import { parseEd2kLink } from '../eD2kTools';
 import { AmuleMediaProvider } from './adapters/AmuleMediaProvider';
 import { TelegramMediaProvider } from './adapters/TelegramMediaProvider';
@@ -13,6 +14,7 @@ import type { IMediaProvider, MediaTransfer, MediaSearchResult, MediaTransfersRe
 export class MediaProviderService {
 	private providers: IMediaProvider[] = [];
 	private readonly db = container.get(MainDB);
+	private readonly events = container.get(AppEvents);
 	public readonly searchHistory = new SearchHistory();
 
 	constructor() {
@@ -26,6 +28,7 @@ export class MediaProviderService {
 	async startSearch(query: string, _type?: string): Promise<void> {
 		await Promise.allSettled(this.providers.map((p) => p.startSearch(query)));
 		this.searchHistory.addEntry(query, query);
+		this.events.emit('search.started', { query });
 	}
 
 	async getSearchResults(): Promise<MediaSearchResponse> {
@@ -106,6 +109,12 @@ export class MediaProviderService {
 		const provider = this.providers.find((p) => p.canHandleDownload(link));
 		if (!provider) throw new Error(`No provider can handle link: ${link}`);
 		await provider.addDownload(link);
+		if (!duplicate) {
+			// Providers swallow their own failures, so the tracked record is the proof that the download was really added
+			const { hash } = this.parseLinkIdentity(link);
+			const record = hash ? this.db.getDownload(hash) : undefined;
+			if (record) this.events.emit('download.added', { ...toDownloadEventPayload(record, provider.providerId), link });
+		}
 		return { duplicate };
 	}
 
@@ -153,10 +162,14 @@ export class MediaProviderService {
 			case 'stop':
 				await provider.stopDownload(hash);
 				break;
-			case 'cancel':
+			case 'cancel': {
+				// Read the record before removing it so the event carries name/size/category
+				const dbRecord = this.db.getDownload(hash.toLowerCase());
 				await this.deleteFileForCompletedDownload(hash);
 				await provider.removeDownload(hash);
+				this.events.emit('download.cancelled', toDownloadEventPayload(dbRecord ?? { hash }, provider.providerId));
 				break;
+			}
 			default:
 				throw new Error(`Unknown command: ${command}`);
 		}

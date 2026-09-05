@@ -6,6 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { container } from './container/ServiceContainer';
 import { MainDB, DownloadDbRecord } from '../services/db/MainDB';
+import { AppEvents, toDownloadEventPayload } from './AppEvents';
 import { buildEd2kLink, parseEd2kLink } from './eD2kTools';
 import { ChunkInfo, TransferSource, TransferSourceNameCount } from './mediaprovider/types';
 
@@ -123,6 +124,7 @@ export class AmuleService {
 	private readonly port = process.env.AMULE_EC_CLIENT_PORT || '4712';
 	private readonly password = process.env.AMULE_EC_CLIENT_PASSWORD || 'secret';
 	private readonly client = new AmuleClient({ host: this.host, port: parseInt(this.port), password: this.password, timeout: 5000, requestTimeout: 5000 });
+	private readonly events = container.get(AppEvents);
 	private db: MainDB;
 
 	constructor() {
@@ -343,6 +345,7 @@ export class AmuleService {
 							dbRecord.name = completedFile.fileName ?? '';
 							dbRecord.size = completedFile.sizeFull || 0;
 							console.log('Marked file as completed in DB:', dbRecord.hash, dbRecord.name);
+							this.events.emit('download.completed', toDownloadEventPayload(dbRecord, 'amule'));
 						} catch (e) {
 							console.error('DB update completion error:', e);
 						}
