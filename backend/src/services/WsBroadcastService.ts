@@ -6,11 +6,15 @@ import { AmuledService } from './AmuledService';
 import { SystemService } from './SystemService';
 import { MediaProviderService } from './mediaprovider';
 import { SpeedHistoryService } from './SpeedHistoryService';
+import { authenticateRequest } from '../middleware/authMiddleware';
 
 interface WsMessage {
 	type: string;
 	data: unknown;
 }
+
+/** Application-defined close code (4000–4999 range) sent to clients that fail authentication. */
+const WS_CLOSE_UNAUTHORIZED = 4401;
 
 /**
  * WsBroadcastService
@@ -18,6 +22,11 @@ interface WsMessage {
  * Attaches a WebSocket server to the existing HTTP server and periodically
  * pushes telemetry data to all connected clients.  The REST API is left
  * unchanged; this service only handles server-initiated broadcasts.
+ *
+ * Authentication: the upgrade request is checked with the same rules as the
+ * REST API (see authenticateRequest). Browsers can't set headers on a
+ * WebSocket, so the UI passes its JWT as `/ws?token=<jwt>`. Unauthenticated
+ * clients are closed with code 4401 before any data is sent.
  *
  * Message types (server → client):
  *   amule:status       – AmuleService.getStats()           every 4 s
@@ -48,6 +57,13 @@ export class WsBroadcastService {
 		this.wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
 		this.wss.on('connection', (ws: WebSocket, req) => {
+			if (!authenticateRequest(req).authorized) {
+				console.warn(`[WS] Unauthorized client from ${req.socket.remoteAddress}, closing`);
+				// close() moves the socket to CLOSING synchronously, so broadcast() will skip it.
+				ws.close(WS_CLOSE_UNAUTHORIZED, 'Unauthorized');
+				return;
+			}
+
 			console.log(`[WS] Client connected from ${req.socket.remoteAddress}`);
 
 			ws.on('close', () => console.log('[WS] Client disconnected'));
