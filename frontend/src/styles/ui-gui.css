@@ -2,7 +2,7 @@ body {
 	background-color: var(--ui-face);
 	color: var(--ui-text);
 	font-family: var(--ui-font);
-	font-size: 11px;
+	font-size: var(--ui-font-size, 11px);
 	margin: 0;
 	padding: 0;
 	height: 100vh;
@@ -25,7 +25,7 @@ body {
 	border-color: var(--ui-btn-border-color);
 	border-radius: var(--ui-btn-radius);
 	padding: var(--ui-btn-padding);
-	font-size: 11px;
+	font-size: var(--ui-font-size, 11px);
 	font-family: var(--ui-font);
 	cursor: pointer;
 	box-shadow: var(--ui-btn-shadow);
@@ -39,7 +39,7 @@ body {
 	gap: 4px;
 	vertical-align: middle;
 	position: relative;
-	height: 23px;
+	height: var(--ui-btn-height, 23px);
 }
 
 .ui-inline-input-block {
@@ -90,44 +90,6 @@ body {
 	background-repeat: no-repeat;
 	background-position: center;
 	vertical-align: middle;
-}
-
-.icon-start {
-	background-image: url('/assets/icons/Start.ico');
-}
-.icon-pause {
-	background-image: url('/assets/icons/Pause.ico');
-}
-.icon-stop {
-	background-image: url('/assets/icons/Stop.ico');
-}
-.icon-delete {
-	background-image: url('/assets/icons/Delete.ico');
-}
-.icon-settings {
-	background-image: url('/assets/icons/Preferences.ico');
-}
-.icon-upload {
-	background-image: url('/assets/icons/Upload.ico');
-}
-.icon-download {
-	background-image: url('/assets/icons/Download.ico');
-}
-.icon-fileimportparts {
-	background-image: url('/assets/icons/FileImportParts.ico');
-}
-.icon-connectdo {
-	background-image: url('/assets/icons/ConnectDo.ico');
-}
-.icon-connectdrop {
-	background-image: url('/assets/icons/ConnectDrop.ico');
-}
-
-.icon-telegram {
-	background-image: url('/assets/icons/ext/Telegram.png');
-}
-.icon-emule {
-	background-image: url('/favicon.ico');
 }
 
 /* Panels - Base */
@@ -183,7 +145,7 @@ body {
 	color: var(--ui-text);
 	font-family: var(--ui-font);
 	cursor: default;
-	height: 19px;
+	height: var(--ui-th-height, 19px);
 }
 
 .ui-list th:hover {
@@ -199,7 +161,7 @@ body {
 }
 
 .ui-list td {
-	padding: 2.5px 5px;
+	padding: var(--ui-td-padding, 2.5px 5px);
 	cursor: default;
 	white-space: nowrap;
 	overflow: hidden;
@@ -226,7 +188,7 @@ input:not([type='checkbox']):not([type='radio']):not([type='button']):not([type=
 select,
 textarea {
 	&:not(textarea) {
-		height: 23px;
+		height: var(--ui-input-height, 23px);
 	}
 	border-style: var(--ui-input-border-style);
 	border-width: var(--ui-input-border-width);
@@ -234,7 +196,7 @@ textarea {
 	background-color: var(--ui-input-bg);
 	color: var(--ui-text);
 	font-family: var(--ui-font);
-	font-size: 11px;
+	font-size: var(--ui-font-size, 11px);
 	padding: var(--ui-input-padding, 3px);
 	border-radius: var(--ui-input-radius, 0);
 	box-shadow: var(--ui-input-shadow, none);
@@ -294,16 +256,6 @@ legend {
 	background-color: var(--ui-list-hover-bg);
 }
 
-/* Connected Server Style */
-.connected-server-row td {
-	color: var(--ui-text-accent);
-	font-weight: bold;
-}
-/* Ensure selection visibility on connected row */
-.ui-list tr.selected.connected-server-row td {
-	color: var(--ui-hl-text);
-}
-
 /* Generic Table Container */
 .ui-table-container {
 	overflow: auto;
@@ -312,4 +264,11 @@ legend {
 	border-color: var(--ui-table-border-color, var(--ui-input-border-color));
 	box-shadow: var(--ui-table-shadow, none);
 	min-height: 0;
+}
+
+.ui-toolbar-separator {
+	width: 1px;
+	height: 20px;
+	background-color: var(--ui-toolbar-separator-bg, var(--ui-panel-sunken-border-color));
+	vertical-align: middle;
 }
