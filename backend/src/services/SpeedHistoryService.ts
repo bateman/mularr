@@ -2,6 +2,7 @@ import { container } from './container/ServiceContainer';
 import { MediaProviderService } from './mediaprovider';
 import { AmuleService } from './AmuleService';
 import type { SpeedSample } from '../types/StatsTypes';
+import { LoggerFactory } from './logging/Logger';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ const POLL_INTERVAL_MS = 5_000; // 5 s
 const MAX_SAMPLES = 2_160; // 3 h at 5 s intervals
 
 export class SpeedHistoryService {
+	private readonly logger = LoggerFactory.create(this);
 	/** Circular buffer stored as a plain array (oldest first). */
 	private history: SpeedSample[] = [];
 	private intervalId: NodeJS.Timeout | null = null;
@@ -28,7 +30,7 @@ export class SpeedHistoryService {
 	}
 
 	public start(): void {
-		console.log('[SpeedHistory] Starting speed-history polling...');
+		this.logger.info('Starting speed-history polling...');
 		this.poll();
 		this.intervalId = setInterval(() => this.poll(), POLL_INTERVAL_MS);
 	}
@@ -77,7 +79,7 @@ export class SpeedHistoryService {
 					}
 				}
 			} else {
-				console.warn('[SpeedHistory] Failed to get transfers:', transfersResp.reason);
+				this.logger.warn('Failed to get transfers:', transfersResp.reason);
 			}
 
 			// ── Upload speed from aMule global status ─────────────────────────
@@ -114,7 +116,7 @@ export class SpeedHistoryService {
 				}
 			}
 		} catch (err) {
-			console.error('[SpeedHistory] Unexpected error during poll:', err);
+			this.logger.error('Unexpected error during poll:', err);
 		}
 	}
 }

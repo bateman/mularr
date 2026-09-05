@@ -1,4 +1,5 @@
 import type { DownloadDbRecord } from './db/MainDB';
+import { LoggerFactory } from './logging/Logger';
 
 /** Payload shared by every download.* event. */
 export interface DownloadEventPayload {
@@ -43,6 +44,7 @@ type AnyListener = (event: AppEvent, payload: AppEventPayloads[AppEvent]) => voi
  * reach the emitter, so emit() is always safe to call inline.
  */
 export class AppEvents {
+	private readonly logger = LoggerFactory.create(this);
 	private readonly listeners = new Map<AppEvent, Set<(payload: any) => void>>();
 	private readonly anyListeners = new Set<AnyListener>();
 
@@ -65,7 +67,7 @@ export class AppEvents {
 		try {
 			fn();
 		} catch (error) {
-			console.error(`[AppEvents] Listener error for ${event}:`, error);
+			this.logger.error(`Listener error for ${event}:`, error);
 		}
 	}
 }

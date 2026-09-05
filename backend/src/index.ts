@@ -30,14 +30,17 @@ import { authRoutes } from './routes/authRoutes';
 import { blacklistRoutes } from './routes/blacklistRoutes';
 import { authMiddleware } from './middleware/authMiddleware';
 import { AuthService } from './services/AuthService';
+import { LoggerFactory } from './services/logging/Logger';
+
+const logger = LoggerFactory.create('Main');
 
 // A rejected promise nobody awaited (fire-and-forget calls, listeners) must not take the whole
 // container down with it, which is Node's default. Log it and keep serving.
 process.on('unhandledRejection', (reason) => {
-	console.error('[Process] Unhandled promise rejection:', reason);
+	logger.error('Unhandled promise rejection:', reason);
 });
 
-console.log(`Starting Mularr v${__APP_MANIFEST__.version}...`);
+logger.info(`Starting Mularr v${__APP_MANIFEST__.version}...`);
 
 const app = express();
 const { port, databasePath: dbPath } = __APP_CONFIG__;
@@ -55,9 +58,9 @@ container.register(AppEvents, new AppEvents());
 const authService = new AuthService(path.dirname(dbPath));
 container.register(AuthService, authService);
 if (authService.isAuthEnabled()) {
-	console.log('[Auth] Authentication is enabled.');
+	logger.info('Authentication is enabled.');
 } else {
-	console.log('[Auth] No credentials configured — running in open-access mode.');
+	logger.info('No credentials configured — running in open-access mode.');
 }
 
 async function main() {
@@ -95,7 +98,7 @@ async function main() {
 	// Initialize Telegram Indexer Service (Always init, but disconnected if no auth)
 	const indexerService = new TelegramIndexerService();
 	container.register(TelegramIndexerService, indexerService);
-	indexerService.start().catch((err) => console.error('Error starting initial Telegram indexer check:', err));
+	indexerService.start().catch((err) => logger.error('Error starting initial Telegram indexer check:', err));
 
 	// Initialize and start Mularr Monitoring Service
 	const monitoringService = new MularrMonitoringService();
@@ -157,7 +160,7 @@ async function main() {
 	// -- Log any uncaught requests to help debug ----------------------------------
 
 	app.use((req, res, next) => {
-		console.log(`Unhandled request: ${req.method} ${req.originalUrl}`);
+		logger.debug(`Unhandled request: ${req.method} ${req.originalUrl}`);
 		next();
 	});
 
@@ -168,11 +171,11 @@ async function main() {
 	wsBroadcastService.start();
 
 	httpServer.listen(port, () => {
-		console.log(`Server is running at http://localhost:${port}`);
+		logger.info(`Server is running at http://localhost:${port}`);
 	});
 }
 
 main().catch((err) => {
-	console.error('Fatal error during startup:', err);
+	logger.error('Fatal error during startup:', err);
 	process.exit(1);
 });

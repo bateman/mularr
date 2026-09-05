@@ -2,17 +2,19 @@ import { Request, Response } from 'express';
 import { container } from '../services/container/ServiceContainer';
 import { eD2kLinkToFakeMagnet, hashToFakeMagnet } from './qbittorrentMappings';
 import { MediaProviderService, MediaSearchResult } from '../services/mediaprovider';
+import { LoggerFactory } from '../services/logging/Logger';
 
 /**
  * IndexerController provides a Torznab-compatible API for Sonarr, Radarr and Lidarr.
  */
 export class IndexerController {
+	private readonly logger = LoggerFactory.create(this);
 	private readonly mediaProviderService = container.get(MediaProviderService);
 
 	handle = async (req: Request, res: Response) => {
 		const { t, q, season, ep, offset, limit, cat, imdbid, rid, director, year, artist, album } = req.query;
 
-		console.log(`[Indexer] Action: ${t}, Query: ${q}, IMDB: ${imdbid}, Artist: ${artist}, Album: ${album}, Cat: ${cat}`);
+		this.logger.info(`Action: ${t}, Query: ${q}, IMDB: ${imdbid}, Artist: ${artist}, Album: ${album}, Cat: ${cat}`);
 
 		if (t === 'caps') {
 			return this.getCapabilities(res);
@@ -35,7 +37,7 @@ export class IndexerController {
 			// With no search terms, return one fake item: the *arr
 			// connection Test fails hard on an empty feed.
 			if (!q && !imdbid && !musicQuery) {
-				console.log('[Indexer] No search terms provided (q/imdbid/artist/album) — returning one fake item for compatibility');
+				this.logger.debug('No search terms provided (q/imdbid/artist/album) — returning one fake item for compatibility');
 				const fakeItem = [
 					{
 						name: 'Mularr Test Item',
@@ -62,13 +64,13 @@ export class IndexerController {
 				// In a real eMule world, finding by IMDB directly is hard.
 				// For now, if we don't have a name, we return empty to pass the "Test" accurately.
 				// Sonarr/Radarr usually send the title in 'q' for actual searches though.
-				console.log(`[Indexer] Search by IMDB ${imdbid} requested without title. Returning empty.`);
+				this.logger.debug(`Search by IMDB ${imdbid} requested without title. Returning empty.`);
 				return this.renderRss(res, [], cat as string);
 			}
 
 			// Radarr/Sonarr "Test" often sends 't=movie' or 't=search' without 'q'.
 			if (!queryStr.trim()) {
-				console.log(`[Indexer] Empty query for action ${t}, returning empty valid RSS for Test compatibility`);
+				this.logger.debug(`Empty query for action ${t}, returning empty valid RSS for Test compatibility`);
 				return this.renderRss(res, [], cat as string);
 			}
 
@@ -112,7 +114,7 @@ export class IndexerController {
 						stable = 0;
 					}
 					lastCount = current;
-					console.log(`[Indexer] Search progress: ${Math.floor(status.progress * 100)}%, results so far: ${current}`);
+					this.logger.debug(`Search progress: ${Math.floor(status.progress * 100)}%, results so far: ${current}`);
 				}
 
 				const results = await this.mediaProviderService.getSearchResults();
@@ -124,11 +126,11 @@ export class IndexerController {
 				const size = parseInt(limit as string) || 100;
 				list = list.slice(start, start + size);
 
-				console.log(`[Indexer] Returning ${list.length} results (offset: ${start}, limit: ${size}) for query "${queryStr}"`);
+				this.logger.info(`Returning ${list.length} results (offset: ${start}, limit: ${size}) for query "${queryStr}"`);
 
 				return this.renderRss(res, list, cat as string);
 			} catch (e: any) {
-				console.error('Indexer Search Error:', e);
+				this.logger.error('Indexer Search Error:', e);
 				return res.status(500).send(e.message);
 			}
 		}
@@ -237,7 +239,7 @@ export class IndexerController {
   </channel>
 </rss>`;
 
-		console.log('Rendered RSS:', rss);
+		this.logger.debug('Rendered RSS:', rss);
 
 		res.send(rss);
 	}

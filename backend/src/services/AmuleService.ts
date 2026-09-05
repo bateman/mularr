@@ -10,6 +10,7 @@ import { MainDB, DownloadDbRecord } from '../services/db/MainDB';
 import { AppEvents, toDownloadEventPayload } from './AppEvents';
 import { buildEd2kLink, parseEd2kLink } from './eD2kTools';
 import { MediaCategory, ChunkInfo, TransferSource, TransferSourceNameCount } from './mediaprovider/types';
+import { LoggerFactory } from './logging/Logger';
 
 function normalizeCategoryName(name: string | null, ctgs: MediaCategory[]): string {
 	const DEFAULT_VALUE = 'default';
@@ -117,8 +118,6 @@ function getDataFromFileRef(hashOrLink: string): FileRefData | null {
 			hash: hashOrLink.toLowerCase(),
 			isEd2kLink: false,
 		};
-	} else {
-		console.warn('Input does not appear to be a valid hash or ed2k link:', hashOrLink);
 	}
 	return null;
 }
@@ -129,6 +128,7 @@ function findByHash<T extends AmuleFile>(downloads: T[], hash: string): T | null
 }
 
 export class AmuleService {
+	private readonly logger = LoggerFactory.create(this);
 	private readonly client = new AmuleClient({
 		host: __APP_CONFIG__.amule.ec.host,
 		port: __APP_CONFIG__.amule.ec.port,
@@ -181,7 +181,7 @@ export class AmuleService {
 				raw: `Download: ${stats.downloadSpeed} bytes/s\nUpload: ${stats.uploadSpeed} bytes/s`,
 			};
 		} catch (error: any) {
-			console.error('❌ EC Client Stats Error:', error.message);
+			this.logger.error('EC Client Stats Error:', error.message);
 			return { raw: 'Stats error' };
 		}
 	}
@@ -203,7 +203,7 @@ export class AmuleService {
 
 			return { list: servers, connectedServer };
 		} catch (error: any) {
-			console.error('❌ EC Client Servers Error:', error.message);
+			this.logger.error('EC Client Servers Error:', error.message);
 			return { raw: 'Error getting servers', list: [] };
 		}
 	}
@@ -212,7 +212,7 @@ export class AmuleService {
 		try {
 			await this.client.connectToServer(ip, port);
 		} catch (error) {
-			console.error('❌ EC Client Connect Error:', error);
+			this.logger.error('EC Client Connect Error:', error);
 			throw error;
 		}
 	}
@@ -221,7 +221,7 @@ export class AmuleService {
 		try {
 			await this.client.disconnectFromServer();
 		} catch (error) {
-			console.error('❌ EC Client Disconnect Error:', error);
+			this.logger.error('EC Client Disconnect Error:', error);
 			throw error;
 		}
 	}
@@ -230,7 +230,7 @@ export class AmuleService {
 		try {
 			await this.client.updateServerListFromUrl(url);
 		} catch (error) {
-			console.error('❌ EC Client Update Server List Error:', error);
+			this.logger.error('EC Client Update Server List Error:', error);
 			throw error;
 		}
 	}
@@ -239,7 +239,7 @@ export class AmuleService {
 		try {
 			await this.client.addServer(ip, port, name);
 		} catch (error) {
-			console.error('❌ EC Client Add Server Error:', error);
+			this.logger.error('EC Client Add Server Error:', error);
 			throw error;
 		}
 	}
@@ -248,7 +248,7 @@ export class AmuleService {
 		try {
 			await this.client.removeServer(ip, port);
 		} catch (error) {
-			console.error('❌ EC Client Remove Server Error:', error);
+			this.logger.error('EC Client Remove Server Error:', error);
 			throw error;
 		}
 	}
@@ -271,7 +271,7 @@ export class AmuleService {
 			const ecid = await this.resolveServerEcid(ip, port);
 			await this.client.setServerPriority(ecid, priority);
 		} catch (error) {
-			console.error('❌ EC Client Set Server Priority Error:', error);
+			this.logger.error('EC Client Set Server Priority Error:', error);
 			throw error;
 		}
 	}
@@ -281,7 +281,7 @@ export class AmuleService {
 			const ecid = await this.resolveServerEcid(ip, port);
 			await this.client.setServerStatic(ecid, isStatic);
 		} catch (error) {
-			console.error('❌ EC Client Set Server Static Error:', error);
+			this.logger.error('EC Client Set Server Static Error:', error);
 			throw error;
 		}
 	}
@@ -290,7 +290,7 @@ export class AmuleService {
 		try {
 			const files = await this.client.getSharedFiles();
 			if (files.length === 0) {
-				console.log('!! NO Shared Files from EC Client');
+				this.logger.debug('!! NO Shared Files from EC Client');
 			}
 			const list = files.map((file) => ({
 				...file,
@@ -301,7 +301,7 @@ export class AmuleService {
 			}));
 			return { raw: `Shared Files (${files.length})`, list: list };
 		} catch (error: any) {
-			console.error('❌ EC Client Shared Files Error:', error.message);
+			this.logger.error('EC Client Shared Files Error:', error.message);
 		}
 		return { raw: 'Error getting shared files', list: [] };
 	}
@@ -313,12 +313,12 @@ export class AmuleService {
 		if (!file.filePath || !file.fileName) throw new Error(`No path available for shared file with hash ${hash}`);
 		const filePath = path.join(file.filePath, file.fileName);
 		await fs.unlink(filePath);
-		console.log(`Deleted shared file from disk: ${filePath}`);
+		this.logger.info(`Deleted shared file from disk: ${filePath}`);
 		try {
 			await this.client.reloadSharedFiles();
 		} catch (e) {
 			// The file is already gone; the shared list just stays stale until the next reload
-			console.warn('❌ EC Client reloadSharedFiles failed after deleting a shared file:', e);
+			this.logger.warn('EC Client reloadSharedFiles failed after deleting a shared file:', e);
 		}
 	}
 
@@ -360,10 +360,10 @@ export class AmuleService {
 							dbRecord.is_completed = 1;
 							dbRecord.name = completedFile.fileName ?? '';
 							dbRecord.size = completedFile.sizeFull || 0;
-							console.log('Marked file as completed in DB:', dbRecord.hash, dbRecord.name);
+							this.logger.info('Marked file as completed in DB:', dbRecord.hash, dbRecord.name);
 							this.events.emit('download.completed', toDownloadEventPayload(dbRecord, 'amule'));
 						} catch (e) {
-							console.error('DB update completion error:', e);
+							this.logger.error('DB update completion error:', e);
 						}
 					}
 				}
@@ -398,7 +398,7 @@ export class AmuleService {
 				}
 
 				if (!queueFile) {
-					console.warn('File not in queue or shared, skipping:', dbRecord.hash);
+					this.logger.warn('File not in queue or shared, skipping:', dbRecord.hash);
 					return {
 						rawLine: `> ${dbRecord.name} [${(dbRecord.size / (1024 * 1024)).toFixed(2)} MB] Not in queue`,
 						name: dbRecord.name,
@@ -461,17 +461,17 @@ export class AmuleService {
 				categories: categories,
 			};
 		} catch (error: any) {
-			console.error('❌ EC Client Transfers Error:', error.message);
+			this.logger.error('EC Client Transfers Error:', error.message);
 			return { raw: 'Error getting transfers', list: [], categories: [] };
 		}
 	}
 
 	async clearCompletedTransfers(hashes?: string[]) {
-		console.log('[AmuleService] Clearing completed transfers from DB and client queue', hashes ? `for hashes: ${hashes.join(', ')}` : 'for all');
+		this.logger.info('Clearing completed transfers from DB and client queue', hashes ? `for hashes: ${hashes.join(', ')}` : 'for all');
 		try {
 			this.db.clearCompletedDownloads(hashes);
 		} catch (e) {
-			console.error('DB Clear Completed Transfers Error:', e);
+			this.logger.error('DB Clear Completed Transfers Error:', e);
 			throw e;
 		}
 	}
@@ -479,7 +479,7 @@ export class AmuleService {
 	private lastSearchResults: any[] = [];
 
 	async startSearch(query: string, type: string = 'Global') {
-		console.log(`[AmuleService] Starting Search for: ${query}`);
+		this.logger.info(`Starting Search for: ${query}`);
 
 		try {
 			// Convert string type to enum if possible, default to Global
@@ -492,7 +492,7 @@ export class AmuleService {
 			await this.client.searchAsync(query, searchType);
 			return 'Search Started';
 		} catch (e) {
-			console.error('Start Search Error:', e);
+			this.logger.error('Start Search Error:', e);
 			throw e;
 		}
 	}
@@ -541,7 +541,7 @@ export class AmuleService {
 
 			return { raw: 'No results yet', list: [] };
 		} catch (e: any) {
-			console.error('Get Search Results Error:', e);
+			this.logger.error('Get Search Results Error:', e);
 			return { raw: 'Error fetching results', list: [] };
 		}
 	}
@@ -554,7 +554,7 @@ export class AmuleService {
 				progress: progress,
 			};
 		} catch (e: any) {
-			console.error('Get Search Status Error:', e);
+			this.logger.error('Get Search Status Error:', e);
 
 			return { raw: 'Error fetching search status', progress: 0 };
 		}
@@ -568,13 +568,13 @@ export class AmuleService {
 				list: uploads,
 			};
 		} catch (e: any) {
-			console.error('❌ EC Client Upload Queue Error:', e.message);
+			this.logger.error('EC Client Upload Queue Error:', e.message);
 			return { raw: 'Error fetching upload queue', list: [] };
 		}
 	}
 
 	async addDownload(link: string) {
-		console.log('Adding download:', link);
+		this.logger.info('Adding download:', link);
 
 		// Parse metadata for DB
 		let hash: string | undefined;
@@ -583,7 +583,7 @@ export class AmuleService {
 		if (fileRefData) {
 			hash = fileRefData.hash;
 		} else {
-			console.warn('Failed to parse link for metadata:', link);
+			this.logger.warn('Failed to parse link for metadata:', link);
 		}
 
 		try {
@@ -592,20 +592,20 @@ export class AmuleService {
 			} else if (!fileRefData.isEd2kLink) {
 				// This will only work if the hash is in the last search results.
 				await this.client.downloadSearchResult(Buffer.from(link, 'hex'));
-				console.log(`Added download for hash ${link}`);
+				this.logger.debug(`Added download for hash ${link}`);
 			} else if (fileRefData.isEd2kLink) {
 				await this.client.downloadEd2kLink(link);
-				console.log(`Added download for ed2k link`);
+				this.logger.debug(`Added download for ed2k link`);
 			}
 		} catch (e) {
-			console.error('❌ EC Client failed to add download:', e);
+			this.logger.error('EC Client failed to add download:', e);
 		}
 
 		if (hash) {
 			const added = await this.client.getDownloadQueue();
 			const fileInQueue = added.find((f) => (f.fileHashHexString || '').toLowerCase() === hash!.toLowerCase());
 			if (!fileInQueue) {
-				console.error('❌ File not found in queue after adding, skipping DB insert:', hash);
+				this.logger.error('File not found in queue after adding, skipping DB insert:', hash);
 				return;
 			}
 			const name = fileInQueue.fileName ?? 'Unknown';
@@ -613,57 +613,57 @@ export class AmuleService {
 			try {
 				this.db.addDownload(hash, name, size);
 			} catch (dbe) {
-				console.error('DB Insert Error:', dbe);
+				this.logger.error('DB Insert Error:', dbe);
 			}
 		}
 	}
 
 	async removeDownload(hash: string) {
-		console.log('Removing download:', hash);
+		this.logger.info('Removing download:', hash);
 
 		try {
 			await this.client.deleteDownload(Buffer.from(hash, 'hex'));
 			// Remove from DB if successfully deleted from client
 		} catch (e) {
-			console.error('❌ EC Client removeDownload failed:', e);
+			this.logger.error('EC Client removeDownload failed:', e);
 		}
 
 		try {
 			this.db.deleteDownload(hash.toLowerCase());
 		} catch (e) {
-			console.error('Failed to remove download from DB:', e);
+			this.logger.error('Failed to remove download from DB:', e);
 		}
 	}
 
 	async pauseDownload(hash: string) {
-		console.log('Pausing download:', hash);
+		this.logger.info('Pausing download:', hash);
 
 		try {
 			await this.client.pauseDownload(Buffer.from(hash, 'hex'));
 		} catch (e) {
-			console.error('Pause Download Error:', e);
+			this.logger.error('Pause Download Error:', e);
 			throw e;
 		}
 	}
 
 	async resumeDownload(hash: string) {
-		console.log('Resuming download:', hash);
+		this.logger.info('Resuming download:', hash);
 
 		try {
 			await this.client.resumeDownload(Buffer.from(hash, 'hex'));
 		} catch (e) {
-			console.error('Resume Download Error:', e);
+			this.logger.error('Resume Download Error:', e);
 			throw e;
 		}
 	}
 
 	async stopDownload(hash: string) {
-		console.log('Stopping download:', hash);
+		this.logger.info('Stopping download:', hash);
 
 		try {
 			await this.client.stopDownload(Buffer.from(hash, 'hex'));
 		} catch (e) {
-			console.error('Stop Download Error:', e);
+			this.logger.error('Stop Download Error:', e);
 			throw e;
 		}
 	}
@@ -673,7 +673,7 @@ export class AmuleService {
 			const update = await this.client.getUpdate();
 			return update;
 		} catch (e) {
-			console.error('Get Update Error:', e);
+			this.logger.error('Get Update Error:', e);
 			throw e;
 		}
 	}
@@ -690,7 +690,7 @@ export class AmuleService {
 			const cats = await this.client.getCategories();
 			return (cats || []).map(toCategory);
 		} catch (e: any) {
-			console.error('❌ EC Client getCategories Error:', e.message);
+			this.logger.error('EC Client getCategories Error:', e.message);
 			// Return empty list on error
 			return [];
 		}
@@ -719,7 +719,7 @@ export class AmuleService {
 			}
 			return created;
 		} catch (e) {
-			console.error('Create Category Error:', e);
+			this.logger.error('Create Category Error:', e);
 			throw e;
 		}
 	}
@@ -746,13 +746,13 @@ export class AmuleService {
 				try {
 					this.db.updateCategoryName(existing.name, data.name);
 				} catch (e) {
-					console.error('Failed to update category name in DB:', e);
+					this.logger.error('Failed to update category name in DB:', e);
 				}
 			}
 
 			return updated;
 		} catch (e) {
-			console.error('Update Category Error:', e);
+			this.logger.error('Update Category Error:', e);
 			throw e;
 		}
 	}
@@ -764,7 +764,7 @@ export class AmuleService {
 		try {
 			await this.client.deleteCategory(id);
 		} catch (e) {
-			console.error('Delete Category Error:', e);
+			this.logger.error('Delete Category Error:', e);
 			throw e;
 		}
 	}
@@ -776,7 +776,7 @@ export class AmuleService {
 		try {
 			await this.client.setFileCategory(Buffer.from(hashHex, 'hex'), categoryId);
 		} catch (e) {
-			console.error('Set File Category Error:', e);
+			this.logger.error('Set File Category Error:', e);
 			throw e;
 		}
 	}

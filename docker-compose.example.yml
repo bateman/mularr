@@ -28,6 +28,9 @@ services:
             # Port for the mularr web/api
             - PORT=8940
 
+            # Minimum log level: debug | info | warn | error. debug also logs every request from Sonarr/Radarr, the search progress and the full Torznab responses.
+            - LOG_LEVEL=info
+
             # Telegram bot integration settings if you want to receive notifications about system events, transfer completions, etc. (optional)
             - TELEGRAM_BOT_TOKEN=
             - TELEGRAM_CHAT_ID=

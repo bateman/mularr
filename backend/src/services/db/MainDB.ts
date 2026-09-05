@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { LoggerFactory } from '../logging/Logger';
 
 export interface DownloadDbRecord {
 	hash: string;
@@ -45,6 +46,7 @@ export function blacklistEntryMatches(entry: BlacklistEntry, size?: number | nul
 }
 
 export class MainDB {
+	private readonly logger = LoggerFactory.create(this);
 	private db: Database.Database;
 	public readonly dbPath: string;
 
@@ -119,7 +121,7 @@ export class MainDB {
 				this.db.prepare('UPDATE blacklist SET hash = LOWER(hash)').run();
 			}
 		} catch (e) {
-			console.error('Migration error:', e);
+			this.logger.error('Migration error:', e);
 		}
 	}
 

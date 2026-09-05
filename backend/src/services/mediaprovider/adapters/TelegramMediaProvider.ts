@@ -5,6 +5,7 @@ import { AppEvents, toDownloadEventPayload } from '../../AppEvents';
 import type { IMediaProvider, MediaSearchResult, MediaTransfer } from '../types';
 import { DownloadStatus, TelegramDownloadDirectoryHelper } from '../../TelegramDownloadManager';
 import * as nodePath from 'path';
+import { LoggerFactory } from '../../logging/Logger';
 
 function toAmuleStatusId(status: string): number {
 	switch (status) {
@@ -114,6 +115,7 @@ function buildTelegramTransfer(dbRecord: DownloadDbRecord, indexer: TelegramInde
 // ---------------------------------------------------------------------------
 
 export class TelegramMediaProvider implements IMediaProvider {
+	private readonly logger = LoggerFactory.create(this);
 	readonly providerId = 'telegram';
 	private cachedResults: TelegramIndexerSearchResult[] = [];
 	private searchDone = true;
@@ -134,7 +136,7 @@ export class TelegramMediaProvider implements IMediaProvider {
 		// Run pagination loop in the background – does not block the caller
 		this.runSearchLoop(query)
 			.catch((e) => {
-				console.warn('[TelegramMediaProvider] search loop error:', e);
+				this.logger.warn('search loop error:', e);
 			})
 			.finally(() => {
 				this.searchDone = true;
@@ -145,13 +147,13 @@ export class TelegramMediaProvider implements IMediaProvider {
 		let cursorId: number | null = 0;
 		while (cursorId !== null) {
 			const { results: batch, nextCursor } = await this.indexer.search(query, this.PAGE_SIZE, cursorId);
-			console.log(`[TelegramMediaProvider] Search batch: ${batch.length} results (cursor ${cursorId})`);
+			this.logger.debug(`Search batch: ${batch.length} results (cursor ${cursorId})`);
 			// A page may come back empty when all its hits were purged as vanished media while
 			// more pages remain, so only a null cursor ends the loop
 			this.cachedResults.push(...batch);
 			cursorId = nextCursor;
 		}
-		console.log('[TelegramMediaProvider] Search completed. Total results:', this.cachedResults.length);
+		this.logger.info('Search completed. Total results:', this.cachedResults.length);
 	}
 
 	async getSearchResults(): Promise<MediaSearchResult[]> {
@@ -187,13 +189,13 @@ export class TelegramMediaProvider implements IMediaProvider {
 			const existing = this.db.getDownload(hash);
 			if (!existing) {
 				this.db.addDownload(hash, msg.file_name || 'Unknown', Number(msg.file_size) || 0, null, 'telegram');
-				console.log('[TelegramMediaProvider] Added to DB:', hash);
+				this.logger.info('Added to DB:', hash);
 			}
 			this.indexer.startDownload(chatId, messageId, hash).catch((err: any) => {
-				console.error(`[TelegramMediaProvider] startDownload failed ${hash}:`, err);
+				this.logger.error(`startDownload failed ${hash}:`, err);
 			});
 		} else {
-			console.warn('[TelegramMediaProvider] Message not found:', chatId, messageId);
+			this.logger.warn('Message not found:', chatId, messageId);
 		}
 	}
 
@@ -201,7 +203,7 @@ export class TelegramMediaProvider implements IMediaProvider {
 		try {
 			this.indexer.cancelDownload(hash);
 		} catch (e) {
-			console.error('[TelegramMediaProvider] removeDownload error:', e);
+			this.logger.error('removeDownload error:', e);
 		}
 		this.db.deleteDownload(hash);
 	}
@@ -210,7 +212,7 @@ export class TelegramMediaProvider implements IMediaProvider {
 		try {
 			this.indexer.pauseDownload(hash);
 		} catch (e) {
-			console.error('[TelegramMediaProvider] pauseDownload error:', e);
+			this.logger.error('pauseDownload error:', e);
 		}
 	}
 
@@ -218,7 +220,7 @@ export class TelegramMediaProvider implements IMediaProvider {
 		try {
 			this.indexer.resumeDownload(hash);
 		} catch (e) {
-			console.error('[TelegramMediaProvider] resumeDownload error:', e);
+			this.logger.error('resumeDownload error:', e);
 		}
 	}
 
@@ -226,7 +228,7 @@ export class TelegramMediaProvider implements IMediaProvider {
 		try {
 			this.indexer.pauseDownload(hash);
 		} catch (e) {
-			console.error('[TelegramMediaProvider] stopDownload error:', e);
+			this.logger.error('stopDownload error:', e);
 		}
 	}
 
@@ -234,7 +236,7 @@ export class TelegramMediaProvider implements IMediaProvider {
 		try {
 			return await this.dirHelper.getDownloadTempDir();
 		} catch (e) {
-			console.error('[TelegramMediaProvider] getTempDir error:', e);
+			this.logger.error('getTempDir error:', e);
 			return undefined;
 		}
 	}

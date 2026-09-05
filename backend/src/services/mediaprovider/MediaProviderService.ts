@@ -18,6 +18,7 @@ import type {
 	MediaSearchResponse,
 	MediaSearchStatusResponse,
 } from './types';
+import { LoggerFactory } from '../logging/Logger';
 
 /**
  * How long a transfers snapshot is served from cache. Building one chains several EC requests,
@@ -29,6 +30,7 @@ import type {
 const TRANSFERS_CACHE_TTL_MS = 2000;
 
 export class MediaProviderService {
+	private readonly logger = LoggerFactory.create(this);
 	private providers: IMediaProvider[] = [];
 	private readonly db = container.get(MainDB);
 	private readonly events = container.get(AppEvents);
@@ -230,10 +232,10 @@ export class MediaProviderService {
 			const targetPath = this.resolveFilePath(dbRecord.name, cat?.path, incomingDir);
 			if (targetPath && nodePath.isAbsolute(targetPath) && fs.existsSync(targetPath)) {
 				await fs.promises.unlink(targetPath);
-				console.log(`[sendDownloadCommand] Deleted file: ${targetPath}`);
+				this.logger.info(`Deleted file: ${targetPath}`);
 			}
 		} catch (e) {
-			console.error('[sendDownloadCommand] Error deleting file on cancel:', e);
+			this.logger.error('Error deleting file on cancel:', e);
 		}
 	}
 
@@ -274,9 +276,9 @@ export class MediaProviderService {
 				const destPath = this.resolveFilePath(dbRecord.name, newCat?.path, incomingDir);
 
 				const wasMoved = await this.moveFile(srcPath, destPath);
-				if (wasMoved) console.log(`[setFileCategory] Moved: ${srcPath} -> ${destPath}`);
+				if (wasMoved) this.logger.info(`Moved: ${srcPath} -> ${destPath}`);
 			} catch (e: any) {
-				console.error('[setFileCategory] Error moving file:', e);
+				this.logger.error('Error moving file:', e);
 			}
 		}
 		this.invalidateTransfers();
@@ -304,10 +306,10 @@ export class MediaProviderService {
 
 				const wasMoved = await this.moveFile(srcPath, destPath);
 				if (!wasMoved) continue;
-				console.log(`[moveCategoryCompletedFiles] Moved: ${srcPath} -> ${destPath}`);
+				this.logger.info(`Moved: ${srcPath} -> ${destPath}`);
 				moved++;
 			} catch (e: any) {
-				console.error(`[moveCategoryCompletedFiles] Error moving ${dl.name}:`, e);
+				this.logger.error(`Error moving ${dl.name}:`, e);
 				errors.push(`Failed to move "${dl.name}": ${e.message}`);
 			}
 		}
@@ -339,11 +341,11 @@ export class MediaProviderService {
 			if (!fs.existsSync(filePath)) {
 				this.db.deleteDownload(record.hash);
 				deleted++;
-				console.log(`[cleanDeadDownloadRecords] Removed dead record: ${record.name} (${record.hash})`);
+				this.logger.info(`Removed dead record: ${record.name} (${record.hash})`);
 			}
 		}
 		if (deleted > 0) {
-			console.log(`[cleanDeadDownloadRecords] Cleaned ${deleted} dead record(s) from DB`);
+			this.logger.info(`Cleaned ${deleted} dead record(s) from DB`);
 			this.invalidateTransfers();
 		}
 		return deleted;

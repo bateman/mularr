@@ -4,8 +4,10 @@ import { AmuledService } from './AmuledService';
 import { AppEvents } from './AppEvents';
 import { GluetunService } from './GluetunService';
 import { TelegramBotService } from './TelegramBotService';
+import { LoggerFactory } from './logging/Logger';
 
 export class MularrMonitoringService {
+	private readonly logger = LoggerFactory.create(this);
 	private readonly checkInterval: number = 10 * 1000; // 10 seconds
 	private readonly periodicRestartIntervalHours = __APP_CONFIG__.amule.restartIntervalHours;
 	private intervalId: NodeJS.Timeout | null = null;
@@ -26,7 +28,7 @@ export class MularrMonitoringService {
 	}
 
 	public start() {
-		console.log('Starting Mularr Monitoring Service...');
+		this.logger.info('Starting Mularr Monitoring Service...');
 		this.notify('🚀 Mularr Monitoring Service started');
 		this.check();
 		this.intervalId = setInterval(() => this.check(), this.checkInterval);
@@ -50,7 +52,7 @@ export class MularrMonitoringService {
 	private async periodicRestart() {
 		if (this.amuledService.isRestarting) return;
 		const hours = this.periodicRestartIntervalHours;
-		console.log(`Performing scheduled ${hours}h aMule daemon restart...`);
+		this.logger.info(`Performing scheduled ${hours}h aMule daemon restart...`);
 		await this.notify(`🔁 Scheduled restart of aMule daemon (every ${hours}h).`);
 		await this.amuledService.restartDaemon();
 	}
@@ -82,10 +84,10 @@ export class MularrMonitoringService {
 				} else {
 					this.gluetunFailures++;
 					const statusStr = status ? status.status : 'unreachable';
-					console.warn(`⚠️ Gluetun health check failed (${this.gluetunFailures}/${this.maxGluetunFailures}). Status: ${statusStr}`);
+					this.logger.warn(`⚠️ Gluetun health check failed (${this.gluetunFailures}/${this.maxGluetunFailures}). Status: ${statusStr}`);
 
 					if (this.gluetunFailures >= this.maxGluetunFailures) {
-						console.error(`🚨 Gluetun health check failed ${this.maxGluetunFailures} consecutive times. Suicide triggered.`);
+						this.logger.error(`🚨 Gluetun health check failed ${this.maxGluetunFailures} consecutive times. Suicide triggered.`);
 						await this.notify(
 							`🚨 Gluetun health check failed ${this.maxGluetunFailures} consecutive times (Status: ${statusStr}). Restarting container...`
 						);
@@ -98,12 +100,12 @@ export class MularrMonitoringService {
 
 			// 2. Check aMule daemon status
 			if (!(await this.amuledService.isDaemonRunning())) {
-				console.log('⚠️ aMule daemon was not running. Starting aMule daemon...');
+				this.logger.info('⚠️ aMule daemon was not running. Starting aMule daemon...');
 				await this.notify('⚠️ aMule daemon was not running. Starting aMule...');
 				await this.amuledService.startDaemon();
 			}
 		} catch (error: any) {
-			console.error('Mularr Monitoring Service Error:', error.message);
+			this.logger.error('Mularr Monitoring Service Error:', error.message);
 		}
 	}
 }

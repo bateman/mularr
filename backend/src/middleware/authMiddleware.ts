@@ -2,6 +2,9 @@ import type { IncomingMessage } from 'http';
 import { Request, Response, NextFunction } from 'express';
 import { container } from '../services/container/ServiceContainer';
 import { AuthService } from '../services/AuthService';
+import { LoggerFactory } from '../services/logging/Logger';
+
+const logger = LoggerFactory.create('AuthMiddleware');
 
 /**
  * Result of authenticating a raw HTTP request.
@@ -118,13 +121,13 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 	}
 
 	if (outcome.clearSid) {
-		console.log('[AuthMiddleware] Invalid or expired SID cookie, clearing it');
+		logger.debug('Invalid or expired SID cookie, clearing it');
 		authService.clearSidCookie(res);
 	}
 
 	// Never dump headers or query here: they carry the tokens and API keys themselves
-	console.warn(
-		`[AuthMiddleware] Unauthorized request to ${req.method} ${req.path} from ${req.socket.remoteAddress} (credentials presented: ${describePresentedCredentials(req)})`
+	logger.warn(
+		`Unauthorized request to ${req.method} ${req.path} from ${req.socket.remoteAddress} (credentials presented: ${describePresentedCredentials(req)})`
 	);
 
 	res.status(401).json({ error: 'Unauthorized' });

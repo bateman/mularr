@@ -14,9 +14,14 @@ export const __APP_MANIFEST__ = JSON.parse(readFileSync(path.join(__dirname, '..
 // fails fast with a clear message instead of surfacing as NaN or a silent default at runtime.
 // Empty values count as unset: docker-compose.example.yml passes every optional variable as `NAME=`.
 
+export const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
 export interface AppConfig {
 	/** HTTP and WebSocket port. */
 	port: number;
+	/** Minimum level written to the console; see services/logging/Logger.ts. */
+	logLevel: LogLevel;
 	/** Main SQLite database. The data directory (JWT secret file, indexer DB) is derived from it. */
 	databasePath: string;
 	auth: {
@@ -78,6 +83,17 @@ function envInt(name: string, fallback?: number): number | undefined {
 	return parseInt(raw, 10);
 }
 
+/** One of `allowed` (case-insensitive), or `fallback` when unset. */
+function envEnum<T extends string>(name: string, allowed: readonly T[], fallback: T): T {
+	const raw = envString(name);
+	if (raw === undefined) return fallback;
+	const value = raw.trim().toLowerCase();
+	if (!(allowed as readonly string[]).includes(value)) {
+		throw new Error(`Invalid ${name}="${raw}": expected one of ${allowed.join(', ')}`);
+	}
+	return value as T;
+}
+
 /** True only for "true" (case-insensitive), the convention documented in docker-compose.example.yml. */
 function envBool(name: string): boolean {
 	return envString(name)?.toLowerCase() === 'true';
@@ -104,6 +120,7 @@ function loadConfig(): AppConfig {
 	const telegramBotToken = envString('TELEGRAM_BOT_TOKEN');
 	return {
 		port: envInt('PORT', 8940),
+		logLevel: envEnum('LOG_LEVEL', LOG_LEVELS, 'info'),
 		databasePath: envString('DATABASE_PATH') ?? path.join(__dirname, '../dev-data/database.sqlite'),
 		auth: {
 			username: envString('AUTH_USERNAME'),

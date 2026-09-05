@@ -1,6 +1,7 @@
 import { MainDB, Extension, ValidationResult } from '../services/db/MainDB';
 import { container } from './container/ServiceContainer';
 import { AppEvent, AppEvents, isAppEvent } from './AppEvents';
+import { LoggerFactory } from './logging/Logger';
 
 function isHttpUrl(value: string): boolean {
 	try {
@@ -12,6 +13,7 @@ function isHttpUrl(value: string): boolean {
 }
 
 export class ExtensionsService {
+	private readonly logger = LoggerFactory.create(this);
 	private readonly db = container.get(MainDB);
 	private readonly events = container.get(AppEvents);
 
@@ -76,7 +78,7 @@ export class ExtensionsService {
 			const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data });
 			for (const webhook of webhooks) void this.postWebhook(webhook, event, body);
 		} catch (error) {
-			console.error(`[ExtensionsService] Failed to dispatch ${event} to webhooks:`, error);
+			this.logger.error(`Failed to dispatch ${event} to webhooks:`, error);
 		}
 	}
 
@@ -93,7 +95,7 @@ export class ExtensionsService {
 				throw new Error(`Webhook responded ${response.status}`);
 			}
 		} catch (error: any) {
-			console.error(`[ExtensionsService] Webhook ${webhook.name} failed for ${event}:`, error?.message ?? error);
+			this.logger.error(`Webhook ${webhook.name} failed for ${event}:`, error?.message ?? error);
 		}
 	}
 
@@ -136,7 +138,7 @@ export class ExtensionsService {
 		const extensions = this.getAllExtensions().filter((v) => v.enabled && v.type === 'validator');
 		if (extensions.length === 0) return;
 
-		console.log(`[ExtensionsService] Processing file ${fileHash} (${filePath})`);
+		this.logger.debug(`Processing file ${fileHash} (${filePath})`);
 
 		for (const v of extensions) {
 			// Check if already validated (optional, but good optimize)
@@ -164,9 +166,9 @@ export class ExtensionsService {
 				// Assume response: { valid: boolean, details: string }
 				const status = data.valid ? 'passed' : 'failed';
 				this.upsertValidation(fileHash, v.id, status, data.details || 'Validation completed');
-				console.log(`[ExtensionsService] Validator ${v.name} result for ${fileHash}: ${status}`);
+				this.logger.info(`Validator ${v.name} result for ${fileHash}: ${status}`);
 			} catch (error: any) {
-				console.error(`Validator ${v.name} failed:`, error);
+				this.logger.error(`Validator ${v.name} failed:`, error);
 				this.upsertValidation(fileHash, v.id, 'failed', error.message);
 			}
 		}

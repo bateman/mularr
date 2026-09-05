@@ -1,8 +1,10 @@
 import { container } from '../../container/ServiceContainer';
 import { AmuleService } from '../../AmuleService';
 import type { IMediaProvider, MediaSearchResult, MediaTransfer } from '../types';
+import { LoggerFactory } from '../../logging/Logger';
 
 export class AmuleMediaProvider implements IMediaProvider {
+	private readonly logger = LoggerFactory.create(this);
 	readonly providerId = 'amule';
 	private readonly amuleService = container.get(AmuleService);
 
@@ -29,7 +31,7 @@ export class AmuleMediaProvider implements IMediaProvider {
 				provider: 'amule',
 			}));
 		} catch (e) {
-			console.error('[AmuleMediaProvider] getSearchResults error:', e);
+			this.logger.error('getSearchResults error:', e);
 			return [];
 		}
 	}
@@ -68,7 +70,7 @@ export class AmuleMediaProvider implements IMediaProvider {
 			const result = await this.amuleService.getTransfers();
 			return result.list.map((d) => ({ ...d, provider: 'amule' })) as MediaTransfer[];
 		} catch (e) {
-			console.error('[AmuleMediaProvider] getTransfers error:', e);
+			this.logger.error('getTransfers error:', e);
 			return [];
 		}
 	}

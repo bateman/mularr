@@ -7,12 +7,7 @@ import { AmuleService, getCatByName } from './AmuleService';
 import { AmuledService } from './AmuledService';
 import { AuthStatus } from './TelegramIndexerService';
 import { container } from './container/ServiceContainer';
-
-const logger = {
-	info: (msg: string) => console.log(`[TelegramDownload] ${msg}`),
-	error: (msg: string, err?: any) => console.error(`[TelegramDownload] ${msg}`, err),
-	warn: (msg: string) => console.warn(`[TelegramDownload] ${msg}`),
-};
+import { LoggerFactory } from './logging/Logger';
 
 const MAX_SIMULTANEOUS_DOWNLOADS = 5;
 
@@ -76,6 +71,7 @@ export class TelegramDownloadDirectoryHelper {
 }
 
 export class TelegramDownloadManager {
+	private readonly logger = LoggerFactory.create(this);
 	private activeDownloads: Map<string, DownloadStatus> = new Map();
 	private completedDownloads: Map<string, DownloadStatus> = new Map();
 	private downloadControls: Map<string, DownloadControl> = new Map();
@@ -126,7 +122,7 @@ export class TelegramDownloadManager {
 	public async startDownload(chatId: string, messageId: number, hash: string): Promise<boolean> {
 		const client = this.getClient();
 		if (!client || this.getAuthStatus() !== 'connected') {
-			logger.error('Cannot start download: Client not connected');
+			this.logger.error('Cannot start download: Client not connected');
 			return false;
 		}
 
@@ -138,14 +134,14 @@ export class TelegramDownloadManager {
 			const message = await getSingleMessage(client, chatId, messageId);
 			if (!message) {
 				// Gone from Telegram: drop it from the index so it stops showing up in searches
-				logger.error(`Message not found for download, purging it from the index: ${chatId}:${messageId}`);
+				this.logger.error(`Message not found for download, purging it from the index: ${chatId}:${messageId}`);
 				this.telegramDb.deleteMessages([{ chat_id: chatId, message_id: messageId }]);
 				return false;
 			}
 
 			const doc = getDownloadableDocument(message);
 			if (!doc) {
-				logger.error(`Message media is not a downloadable document, purging it from the index: ${chatId}:${messageId}`);
+				this.logger.error(`Message media is not a downloadable document, purging it from the index: ${chatId}:${messageId}`);
 				this.telegramDb.deleteMessages([{ chat_id: chatId, message_id: messageId }]);
 				return false;
 			}
@@ -175,7 +171,7 @@ export class TelegramDownloadManager {
 			this.activeDownloads.set(hash, status);
 
 			const outPath = path.join(await this.dirHelper.getDownloadTempDir(), fileName);
-			logger.info(`Starting download: ${fileName} -> ${outPath}`);
+			this.logger.info(`Starting download: ${fileName} -> ${outPath}`);
 
 			// Save to DB for persistence
 			this.telegramDb.addActiveDownload({
@@ -203,7 +199,7 @@ export class TelegramDownloadManager {
 						this.runIterDownload(hash, doc, outPath, fileName);
 					},
 				});
-				logger.info(`Download queued (${this.downloadQueue.length} in queue): ${fileName}`);
+				this.logger.info(`Download queued (${this.downloadQueue.length} in queue): ${fileName}`);
 			} else {
 				status.status = 'downloading';
 				const control: DownloadControl = {
@@ -218,7 +214,7 @@ export class TelegramDownloadManager {
 
 			return true;
 		} catch (err) {
-			logger.error('Error starting download:', err);
+			this.logger.error('Error starting download:', err);
 			return false;
 		}
 	}
@@ -227,7 +223,7 @@ export class TelegramDownloadManager {
 		const active = this.telegramDb.getActiveDownloads();
 		if (active.length === 0) return;
 
-		logger.info(`Resuming ${active.length} active downloads...`);
+		this.logger.info(`Resuming ${active.length} active downloads...`);
 
 		for (const row of active) {
 			this.resumeActiveDownload(row);
@@ -248,7 +244,7 @@ export class TelegramDownloadManager {
 		const active = this.activeDownloads.get(row.hash);
 		if (active) {
 			if (active.status === 'error') {
-				console.warn(`Download ${row.file_name} is in error state, attempting retry...`);
+				this.logger.warn(`Download ${row.file_name} is in error state, attempting retry...`);
 			} else {
 				return;
 			}
@@ -290,13 +286,13 @@ export class TelegramDownloadManager {
 
 			if (this.runningDownloads >= MAX_SIMULTANEOUS_DOWNLOADS) {
 				this.downloadQueue.push({ hash: row.hash, startFn });
-				logger.info(`Download queued on resume (${this.downloadQueue.length} in queue): ${row.file_name}`);
+				this.logger.info(`Download queued on resume (${this.downloadQueue.length} in queue): ${row.file_name}`);
 			} else {
 				status.status = 'downloading';
 				startFn();
 			}
 		} catch (err) {
-			logger.error(`Error resuming download ${row.file_name}:`, err);
+			this.logger.error(`Error resuming download ${row.file_name}:`, err);
 		}
 	}
 
@@ -346,7 +342,7 @@ export class TelegramDownloadManager {
 					// runningDownloads is incremented by processQueue via the slot it already accounted for
 				},
 			});
-			logger.info(`Resume queued (no free slot): ${hash}`);
+			this.logger.info(`Resume queued (no free slot): ${hash}`);
 			return;
 		}
 
@@ -401,7 +397,7 @@ export class TelegramDownloadManager {
 				status.startTime = Date.now();
 				status.lastUpdate = Date.now();
 			}
-			logger.info(`Starting queued download: ${item.hash} (${this.downloadQueue.length} remaining in queue)`);
+			this.logger.info(`Starting queued download: ${item.hash} (${this.downloadQueue.length} remaining in queue)`);
 			item.startFn();
 		}
 	}
@@ -412,7 +408,7 @@ export class TelegramDownloadManager {
 		const client = this.getClient()!;
 		const control = this.downloadControls.get(hash);
 		if (!control) {
-			logger.error(`No control found for download ${fileName}`);
+			this.logger.error(`No control found for download ${fileName}`);
 			return;
 		}
 		let fileStream: fs.WriteStream | undefined;
@@ -424,9 +420,9 @@ export class TelegramDownloadManager {
 				try {
 					const stats = fs.statSync(outPath);
 					offsetProgress = stats.size;
-					logger.info(`Resuming ${fileName} from disk offset: ${offsetProgress} bytes`);
+					this.logger.info(`Resuming ${fileName} from disk offset: ${offsetProgress} bytes`);
 				} catch (e) {
-					logger.warn(`Could not read file size for ${fileName}`);
+					this.logger.warn(`Could not read file size for ${fileName}`);
 				}
 			}
 
@@ -455,7 +451,7 @@ export class TelegramDownloadManager {
 			})) {
 				// Check cancellation before processing chunk
 				if (control.cancelled) {
-					logger.info(`Download cancelled: ${fileName}`);
+					this.logger.info(`Download cancelled: ${fileName}`);
 					break;
 				}
 
@@ -503,15 +499,15 @@ export class TelegramDownloadManager {
 				try {
 					fs.unlinkSync(outPath);
 				} catch {
-					logger.warn(`Could not delete file after cancellation: ${outPath}`);
+					this.logger.warn(`Could not delete file after cancellation: ${outPath}`);
 				}
 			} else {
 				// Final verification (size check)
-				logger.info(`Verifying download completion for ${fileName}...`);
+				this.logger.debug(`Verifying download completion for ${fileName}...`);
 				const finalSize = fs.statSync(outPath).size;
 				if (finalSize !== doc.size.toJSNumber()) {
 					const errMsg = `expected ${doc.size.toJSNumber()}, got ${finalSize}`;
-					logger.error(`Download size mismatch for ${fileName}: ${errMsg}`);
+					this.logger.error(`Download size mismatch for ${fileName}: ${errMsg}`);
 					const s = this.activeDownloads.get(hash);
 					if (s) {
 						s.status = 'error';
@@ -520,7 +516,7 @@ export class TelegramDownloadManager {
 					}
 					return;
 				}
-				logger.info(`Download completed: ${fileName}`);
+				this.logger.info(`Download completed: ${fileName}`);
 
 				const finalDir = await this.dirHelper.getDownloadDir(hash);
 				if (!fs.existsSync(finalDir)) fs.mkdirSync(finalDir, { recursive: true });
@@ -544,7 +540,7 @@ export class TelegramDownloadManager {
 			}
 		} catch (err: any) {
 			fileStream?.end();
-			logger.error(`Error in runIterDownload for ${fileName}:`, err);
+			this.logger.error(`Error in runIterDownload for ${fileName}:`, err);
 			const s = this.activeDownloads.get(hash);
 			if (s) {
 				s.status = 'error';
@@ -554,10 +550,10 @@ export class TelegramDownloadManager {
 			// Retry after delay for transient errors (e.g. network issues)
 			setTimeout(() => {
 				if (control.cancelled) return;
-				logger.info(`Retrying download after error: ${fileName}`);
+				this.logger.info(`Retrying download after error: ${fileName}`);
 				const row = this.telegramDb.getActiveDownload(hash);
 				if (!row) {
-					logger.error(`No DB record found for retry of ${fileName}`);
+					this.logger.error(`No DB record found for retry of ${fileName}`);
 					return;
 				}
 				this.resumeActiveDownload(row);

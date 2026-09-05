@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { Response } from 'express';
 import { __APP_CONFIG__ } from '../app-env';
 import type { AuthStatus } from '../types/AuthTypes';
+import { LoggerFactory } from './logging/Logger';
 
 // Wire contract shared with the frontend (see src/types/AuthTypes.ts), re-exported for backend consumers
 export type { AuthStatus };
@@ -17,6 +18,7 @@ function safeEqual(expected: string, actual: string): boolean {
 }
 
 export class AuthService {
+	private readonly logger = LoggerFactory.create(this);
 	private readonly username = __APP_CONFIG__.auth.username;
 	private readonly password = __APP_CONFIG__.auth.password;
 	private readonly apiKey = __APP_CONFIG__.auth.apiKey;
@@ -47,9 +49,9 @@ export class AuthService {
 		try {
 			fs.mkdirSync(dataDir, { recursive: true });
 			fs.writeFileSync(secretPath, secret, { encoding: 'utf-8', mode: 0o600 });
-			console.log(`[AuthService] Generated new JWT secret and saved it to ${secretPath}`);
+			this.logger.info(`Generated new JWT secret and saved it to ${secretPath}`);
 		} catch (err) {
-			console.warn(`[AuthService] Could not persist JWT secret to ${secretPath} — session tokens will be invalidated on restart.`, err);
+			this.logger.warn(`Could not persist JWT secret to ${secretPath} — session tokens will be invalidated on restart.`, err);
 		}
 		return secret;
 	}
