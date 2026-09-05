@@ -41,6 +41,9 @@ services:
             # Customize the incoming and temp directory directory if needed
             - AMULE_INCOMING_DIR= # example: /my-storage/downloads/mularr
             - AMULE_TEMP_DIR= # example: /my-storage/downloads/mularr/.incomplete
+            # Permission mask for files and folders created by Mularr and aMule (downloads, config, database). Default is 022 (files 644, dirs 755).
+            # Set it to 002 (files 664, dirs 775) if other users of the same group, e.g. Sonarr/Radarr running under a different UID, need to modify, delete or hardlink the downloaded files.
+            - UMASK= # example: 002
             # Shared directories (semicolon-separated absolute paths). When either of these is set,
             # shared directories are managed at startup and become read-only in Settings.
             - AMULE_SHAREDDIR_RECURSIVE= # example: /my-storage/library;/my-storage/series
