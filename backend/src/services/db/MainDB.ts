@@ -205,6 +205,10 @@ export class MainDB {
 		this.db.prepare('UPDATE extensions SET config = ? WHERE id = ?').run(config, id);
 	}
 
+	public updateExtensionUrl(id: number, url: string) {
+		this.db.prepare('UPDATE extensions SET url = ? WHERE id = ?').run(url, id);
+	}
+
 	public toggleExtension(id: number, enabled: boolean) {
 		this.db.prepare('UPDATE extensions SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
 	}

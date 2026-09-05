@@ -38,6 +38,17 @@ export class ExtensionsController {
 		}
 	};
 
+	update = (req: Request, res: Response) => {
+		try {
+			const { id } = req.params;
+			const { url } = req.body;
+			this.service.updateExtensionUrl(Number(id), url);
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
+		}
+	};
+
 	updateConfig = (req: Request, res: Response) => {
 		try {
 			const { id } = req.params;

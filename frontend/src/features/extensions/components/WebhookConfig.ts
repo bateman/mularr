@@ -1,18 +1,19 @@
-import { component } from 'chispa';
+import { component, refBindInput, signal } from 'chispa';
 import { Extension, WEBHOOK_EVENTS, parseWebhookEvents } from '../../../services/ExtensionsApiService';
 import tpl from './WebhookConfig.html';
 
 export interface WebhookConfigProps {
 	extension: Extension;
-	onSave: (events: string[]) => void;
+	onSave: (data: { url: string; events: string[] }) => void;
 	onCancel: () => void;
 }
 
 export const WebhookConfig = component<WebhookConfigProps>(({ extension, onSave, onCancel }) => {
+	const url = signal(extension.url);
 	const selected = new Set(parseWebhookEvents(extension.config));
 
 	return tpl.fragment({
-		urlDisplay: { inner: extension.url, title: extension.url },
+		urlInput: { _ref: refBindInput(url) },
 		eventsList: {
 			inner: WEBHOOK_EVENTS.map((ev) =>
 				tpl.eventRow({
@@ -31,7 +32,7 @@ export const WebhookConfig = component<WebhookConfigProps>(({ extension, onSave,
 				})
 			),
 		},
-		btnSave: { onclick: () => onSave([...selected]) },
+		btnSave: { onclick: () => onSave({ url: url.get().trim(), events: [...selected] }) },
 		btnCancel: { onclick: onCancel },
 	});
 });

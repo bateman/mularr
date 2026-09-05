@@ -66,6 +66,13 @@ export class ExtensionsApiService extends BaseApiService {
 		});
 	}
 
+	async updateExtensionUrl(id: number, url: string): Promise<void> {
+		return this.request<void>(`/${id}`, {
+			method: 'PATCH',
+			body: JSON.stringify({ url }),
+		});
+	}
+
 	async updateExtensionConfig(id: number, config: object): Promise<void> {
 		return this.request<void>(`/${id}/config`, {
 			method: 'PATCH',

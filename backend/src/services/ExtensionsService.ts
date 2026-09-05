@@ -2,6 +2,15 @@ import { MainDB, Extension, ValidationResult } from '../services/db/MainDB';
 import { container } from './container/ServiceContainer';
 import { AppEvent, AppEvents, isAppEvent } from './AppEvents';
 
+function isHttpUrl(value: string): boolean {
+	try {
+		const parsed = new URL(value);
+		return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+	} catch {
+		return false;
+	}
+}
+
 export class ExtensionsService {
 	private db: MainDB;
 
@@ -26,6 +35,19 @@ export class ExtensionsService {
 
 	toggleExtension(id: number, enabled: boolean) {
 		this.db.toggleExtension(id, enabled);
+	}
+
+	/**
+	 * Changes the endpoint an extension points to. Only the URL is editable after creation:
+	 * the type is fixed and everything else lives in `config`.
+	 */
+	updateExtensionUrl(id: number, url: unknown) {
+		const extension = this.db.getExtensionById(id);
+		if (!extension) throw new Error(`Extension ${id} not found`);
+		if (typeof url !== 'string' || !isHttpUrl(url.trim())) {
+			throw new Error('url must be a valid http(s) URL');
+		}
+		this.db.updateExtensionUrl(id, url.trim());
 	}
 
 	updateExtensionConfig(id: number, config: Record<string, unknown>) {
