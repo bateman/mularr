@@ -11,6 +11,13 @@ export interface AuthStatus {
 	hasApiKey: boolean;
 }
 
+/** Constant-time comparison, so a wrong credential can't be narrowed down character by character through response timing. */
+function safeEqual(expected: string, actual: string): boolean {
+	const a = Buffer.from(expected);
+	const b = Buffer.from(actual);
+	return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 export class AuthService {
 	private readonly username = __APP_CONFIG__.auth.username;
 	private readonly password = __APP_CONFIG__.auth.password;
@@ -63,17 +70,15 @@ export class AuthService {
 
 	validateCredentials(username: string, password: string): boolean {
 		if (!this.username || !this.password) return false;
-		return username === this.username && password === this.password;
+		// Compare both regardless of the first result, so timing doesn't reveal which one failed
+		const usernameOk = safeEqual(this.username, username);
+		const passwordOk = safeEqual(this.password, password);
+		return usernameOk && passwordOk;
 	}
 
 	validateApiKey(key: string): boolean {
 		if (!this.apiKey) return false;
-		// Use timing-safe comparison to prevent timing attacks
-		try {
-			return this.apiKey.length === key.length && crypto.timingSafeEqual(Buffer.from(this.apiKey), Buffer.from(key));
-		} catch {
-			return false;
-		}
+		return safeEqual(this.apiKey, key);
 	}
 
 	generateToken(username: string, noExpiry = false): string {
@@ -124,15 +129,24 @@ export class AuthService {
 		} catch {
 			maxAge = NO_EXPIRY_MAX_AGE;
 		}
-		res.setHeader('Set-Cookie', `SID=${token}; HttpOnly; Path=/; Max-Age=${maxAge}`);
+		res.setHeader('Set-Cookie', this.sidCookie(token, maxAge));
 	}
 
 	/** Clears the SID cookie by setting Max-Age=0. */
 	clearSidCookie(res: Response): void {
-		res.setHeader('Set-Cookie', 'SID=; HttpOnly; Path=/; Max-Age=0');
+		res.setHeader('Set-Cookie', this.sidCookie('', 0));
 	}
 
 	setSidCookieOpenMode(res: Response): void {
-		res.setHeader('Set-Cookie', 'SID=mularr_open; HttpOnly; Path=/; Max-Age=3600');
+		res.setHeader('Set-Cookie', this.sidCookie('mularr_open', 3600));
+	}
+
+	/**
+	 * Serializes the SID cookie. HttpOnly keeps it out of page scripts. SameSite=Strict keeps it off
+	 * cross-site requests: it only serves the qBittorrent-compatible API, whose clients (Sonarr,
+	 * Radarr...) are not browsers, so nothing legitimate needs it to travel cross-site.
+	 */
+	private sidCookie(value: string, maxAge: number): string {
+		return `SID=${value}; HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=Strict`;
 	}
 }
