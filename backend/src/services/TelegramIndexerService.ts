@@ -5,9 +5,9 @@ import { Logger } from 'telegram/extensions';
 import { FloodWaitError } from 'telegram/errors/RPCErrorList';
 import { Dialog } from 'telegram/tl/custom/dialog';
 import { container } from './container/ServiceContainer';
-import { TelegramIndexerDB } from './db/TelegramIndexerDB';
+import { MessageRow, TelegramIndexerDB } from './db/TelegramIndexerDB';
 import { MainDB } from './db/MainDB';
-import { TelegramDownloadManager } from './TelegramDownloadManager';
+import { TelegramDownloadManager, getDownloadableDocument } from './TelegramDownloadManager';
 
 // Define a simple logger interface or use console
 const logger = {
@@ -43,6 +43,8 @@ export class TelegramIndexerService {
 	private isIndexing = false;
 	private readonly BATCH_SIZE = 50;
 	private readonly RATE_LIMIT_DELAY = 1000;
+	/** Search hits confirmed to exist within this window are trusted without asking Telegram again. */
+	private readonly MEDIA_VERIFY_TTL_MS = 6 * 60 * 60 * 1000;
 
 	constructor() {
 		// Initialize DB
@@ -534,23 +536,74 @@ export class TelegramIndexerService {
 			return { results: [], nextCursor: null };
 		}
 		const { rows, nextCursor } = await this.db.searchFiles(query, limit, cursorId);
-		const results = rows
-			.filter((f) => f.file_size)
-			.map((msg) => {
-				const hash = `telegram:${msg.chat_id}:${msg.message_id}`;
+		const available = await this.dropMissingMedia(rows.filter((f) => f.file_size));
+		const results = available.map((msg) => {
+			const hash = `telegram:${msg.chat_id}:${msg.message_id}`;
 
-				return {
-					name: msg.file_name || 'Unknown',
-					size: msg.file_size || 0,
-					hash: hash,
-					chatId: msg.chat_id,
-					chatTitle: msg.chat_title || undefined,
-					topicName: msg.topic_name || undefined,
-					messageId: msg.message_id,
-					type: msg.media_type || '',
-				} as TelegramIndexerSearchResult;
-			});
+			return {
+				name: msg.file_name || 'Unknown',
+				size: msg.file_size || 0,
+				hash: hash,
+				chatId: msg.chat_id,
+				chatTitle: msg.chat_title || undefined,
+				topicName: msg.topic_name || undefined,
+				messageId: msg.message_id,
+				type: msg.media_type || '',
+			} as TelegramIndexerSearchResult;
+		});
 		return { results, nextCursor };
+	}
+
+	/**
+	 * Indexed media can vanish from Telegram (deleted messages, attachments edited away),
+	 * leaving search hits that can no longer be downloaded. Re-checks `rows` against
+	 * Telegram, purges the missing ones from the index and returns only those still
+	 * available.
+	 *
+	 * Rows confirmed within MEDIA_VERIFY_TTL_MS are trusted without a call so repeated
+	 * searches (e.g. *arr batches) stay cheap; the rest cost one API call per chat per
+	 * 100 ids. Rows whose check fails (offline, FloodWait above the client threshold,
+	 * left channel...) are kept — never purge on a transient error.
+	 */
+	private async dropMissingMedia(rows: MessageRow[]): Promise<MessageRow[]> {
+		if (!this.client?.connected || this.authStatus !== 'connected') return rows;
+
+		const now = Date.now();
+		const stale = rows.filter((r) => !r.media_verified_at || now - r.media_verified_at > this.MEDIA_VERIFY_TTL_MS);
+		if (stale.length === 0) return rows;
+
+		const byChat = new Map<string, MessageRow[]>();
+		for (const row of stale) {
+			const list = byChat.get(row.chat_id) ?? [];
+			list.push(row);
+			byChat.set(row.chat_id, list);
+		}
+
+		const confirmed: MessageRow[] = [];
+		const missing: MessageRow[] = [];
+		for (const [chatId, chatRows] of byChat) {
+			try {
+				// GramJS batches ids 100 per request and yields `undefined` for deleted messages
+				const messages = await this.client.getMessages(chatId, { ids: chatRows.map((r) => r.message_id) });
+				const available = new Set<number>();
+				for (const msg of messages as Array<Api.Message | undefined>) {
+					if (msg && getDownloadableDocument(msg)) available.add(msg.id);
+				}
+				for (const row of chatRows) {
+					(available.has(row.message_id) ? confirmed : missing).push(row);
+				}
+			} catch (err) {
+				logger.warn(`Could not verify ${chatRows.length} media in chat ${chatId}, keeping them: ${err}`);
+			}
+		}
+
+		if (confirmed.length > 0) this.db.markMediaVerified(confirmed, now);
+		if (missing.length === 0) return rows;
+
+		this.db.deleteMessages(missing);
+		logger.info(`Purged ${missing.length} media no longer available on Telegram.`);
+		const gone = new Set(missing.map((r) => r.id));
+		return rows.filter((r) => !gone.has(r.id));
 	}
 
 	private async executeWithRetry<T>(fn: () => Promise<T>, retries = 5): Promise<T> {

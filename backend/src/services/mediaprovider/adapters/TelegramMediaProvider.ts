@@ -117,7 +117,8 @@ export class TelegramMediaProvider implements IMediaProvider {
 	readonly providerId = 'telegram';
 	private cachedResults: TelegramIndexerSearchResult[] = [];
 	private searchDone = true;
-	private readonly PAGE_SIZE = 20;
+	// Matches Telegram's getMessages batch limit so verifying a page costs one call per chat
+	private readonly PAGE_SIZE = 100;
 	private readonly indexer = container.get(TelegramIndexerService);
 	private readonly dirHelper = new TelegramDownloadDirectoryHelper();
 
@@ -143,8 +144,8 @@ export class TelegramMediaProvider implements IMediaProvider {
 		while (cursorId !== null) {
 			const { results: batch, nextCursor } = await this.indexer.search(query, this.PAGE_SIZE, cursorId);
 			console.log(`[TelegramMediaProvider] Search batch: ${batch.length} results (cursor ${cursorId})`);
-			if (batch.length === 0) break;
-
+			// A page may come back empty when all its hits were purged as vanished media while
+			// more pages remain, so only a null cursor ends the loop
 			this.cachedResults.push(...batch);
 			cursorId = nextCursor;
 		}

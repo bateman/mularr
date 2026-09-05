@@ -16,6 +16,17 @@ const logger = {
 
 const MAX_SIMULTANEOUS_DOWNLOADS = 5;
 
+/** The file attached to the message when it is one this manager can fetch; undefined otherwise. */
+export function getDownloadableDocument(message: Api.Message): Api.Document | undefined {
+	return message.media instanceof Api.MessageMediaDocument && message.media.document instanceof Api.Document ? message.media.document : undefined;
+}
+
+/** Fetches a single message by its ID from the specified chat. GramJS yields `undefined` (not an empty list) for a deleted message */
+export async function getSingleMessage(client: TelegramClient, chatId: string, messageId: number): Promise<Api.Message | undefined> {
+	const messages = await client.getMessages(chatId, { ids: [messageId] });
+	return messages[0];
+}
+
 export interface DownloadStatus {
 	hash: string;
 	fileName: string;
@@ -124,23 +135,20 @@ export class TelegramDownloadManager {
 		}
 
 		try {
-			const messages = await client.getMessages(chatId, { ids: [messageId] });
-			if (!messages || messages.length === 0) {
-				logger.error(`Message not found for download: ${chatId}:${messageId}`);
-				return false;
-			}
-			const message = messages[0];
-			if (!message.media) {
-				logger.error(`Message has no media: ${chatId}:${messageId}`);
+			const message = await getSingleMessage(client, chatId, messageId);
+			if (!message) {
+				// Gone from Telegram: drop it from the index so it stops showing up in searches
+				logger.error(`Message not found for download, purging it from the index: ${chatId}:${messageId}`);
+				this.telegramDb.deleteMessages([{ chat_id: chatId, message_id: messageId }]);
 				return false;
 			}
 
-			if (!(message.media instanceof Api.MessageMediaDocument) || !(message.media.document instanceof Api.Document)) {
-				logger.error(`Message media is not a downloadable document: ${chatId}:${messageId}`);
+			const doc = getDownloadableDocument(message);
+			if (!doc) {
+				logger.error(`Message media is not a downloadable document, purging it from the index: ${chatId}:${messageId}`);
+				this.telegramDb.deleteMessages([{ chat_id: chatId, message_id: messageId }]);
 				return false;
 			}
-
-			const doc = message.media.document;
 
 			let fileName = `telegram_${hash}`;
 			for (const attr of doc.attributes) {
@@ -247,13 +255,9 @@ export class TelegramDownloadManager {
 		}
 
 		try {
-			const messages = await client.getMessages(row.chat_id, { ids: [row.message_id] });
-			if (!messages || messages.length === 0) return;
-
-			const message = messages[0];
-			if (!message.media || !(message.media instanceof Api.MessageMediaDocument)) return;
-
-			const doc = message.media.document as Api.Document;
+			const message = await getSingleMessage(client, row.chat_id, row.message_id);
+			const doc = message && getDownloadableDocument(message);
+			if (!doc) return;
 
 			// Start as queued; will be promoted to 'downloading' only when a slot is confirmed
 			const status: DownloadStatus = {
