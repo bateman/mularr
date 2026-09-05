@@ -241,7 +241,8 @@ export class TelegramMediaProvider implements IMediaProvider {
 
 	async getTransfers(): Promise<MediaTransfer[]> {
 		const records = this.db.getAllDownloads().filter((r) => r.provider === 'telegram');
-		const tempDir = await this.getTempDir();
+		// Only in-progress transfers need the temp dir, and resolving it reads amule.conf and touches the filesystem
+		const tempDir = records.some((r) => !r.is_completed) ? await this.getTempDir() : undefined;
 		return records.map((r) => buildTelegramTransfer(r, this.indexer, this.db, this.events, tempDir));
 	}
 

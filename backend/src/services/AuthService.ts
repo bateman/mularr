@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import jwt from 'jsonwebtoken';
 import { Response } from 'express';
+import { __APP_CONFIG__ } from '../app-env';
 
 export interface AuthStatus {
 	enabled: boolean;
@@ -11,15 +12,12 @@ export interface AuthStatus {
 }
 
 export class AuthService {
-	private readonly username?: string;
-	private readonly password?: string;
-	private readonly apiKey?: string;
+	private readonly username = __APP_CONFIG__.auth.username;
+	private readonly password = __APP_CONFIG__.auth.password;
+	private readonly apiKey = __APP_CONFIG__.auth.apiKey;
 	private readonly jwtSecret: string;
 
 	constructor(dataDir: string) {
-		this.username = process.env.AUTH_USERNAME;
-		this.password = process.env.AUTH_PASSWORD;
-		this.apiKey = process.env.API_KEY;
 		this.jwtSecret = this.resolveJwtSecret(dataDir);
 	}
 
@@ -29,7 +27,7 @@ export class AuthService {
 	 * random secret is generated and persisted so tokens survive restarts.
 	 */
 	private resolveJwtSecret(dataDir: string): string {
-		const envSecret = process.env.JWT_SECRET;
+		const envSecret = __APP_CONFIG__.auth.jwtSecret;
 		if (envSecret) return envSecret;
 
 		const secretPath = path.join(dataDir, 'jwt-secret');

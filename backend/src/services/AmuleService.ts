@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import fs from 'fs/promises';
 import path from 'path';
+import { __APP_CONFIG__ } from '../app-env';
 import { container } from './container/ServiceContainer';
 import { MainDB, DownloadDbRecord } from '../services/db/MainDB';
 import { AppEvents, toDownloadEventPayload } from './AppEvents';
@@ -120,10 +121,13 @@ function findByHash<T extends AmuleFile>(downloads: T[], hash: string): T | null
 }
 
 export class AmuleService {
-	private readonly host = process.env.AMULE_EC_CLIENT_HOST || 'localhost';
-	private readonly port = process.env.AMULE_EC_CLIENT_PORT || '4712';
-	private readonly password = process.env.AMULE_EC_CLIENT_PASSWORD || 'secret';
-	private readonly client = new AmuleClient({ host: this.host, port: parseInt(this.port), password: this.password, timeout: 5000, requestTimeout: 5000 });
+	private readonly client = new AmuleClient({
+		host: __APP_CONFIG__.amule.ec.host,
+		port: __APP_CONFIG__.amule.ec.port,
+		password: __APP_CONFIG__.amule.ec.password,
+		timeout: 5000,
+		requestTimeout: 5000,
+	});
 	private readonly events = container.get(AppEvents);
 	private readonly db = container.get(MainDB);
 

@@ -1,3 +1,4 @@
+import { __APP_CONFIG__ } from '../app-env';
 import { container } from './container/ServiceContainer';
 import { AmuledService } from './AmuledService';
 import { AppEvents } from './AppEvents';
@@ -6,7 +7,7 @@ import { TelegramBotService } from './TelegramBotService';
 
 export class MularrMonitoringService {
 	private readonly checkInterval: number = 10 * 1000; // 10 seconds
-	private readonly periodicRestartIntervalHours: number = parseInt(process.env.AMULE_RESTART_INTERVAL_HOURS || '12');
+	private readonly periodicRestartIntervalHours = __APP_CONFIG__.amule.restartIntervalHours;
 	private intervalId: NodeJS.Timeout | null = null;
 	private periodicRestartId: NodeJS.Timeout | null = null;
 	private gluetunFailures: number = 0;

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import type { AmuleCategory } from 'amule-ec-client';
+import { __APP_CONFIG__ } from '../../app-env';
 import { container } from '../container/ServiceContainer';
 import { AmuleService } from '../AmuleService';
 import { AmuledService } from '../AmuledService';
@@ -11,6 +12,15 @@ import { AmuleMediaProvider } from './adapters/AmuleMediaProvider';
 import { TelegramMediaProvider } from './adapters/TelegramMediaProvider';
 import type { IMediaProvider, MediaTransfer, MediaSearchResult, MediaTransfersResponse, MediaSearchResponse, MediaSearchStatusResponse } from './types';
 
+/**
+ * How long a transfers snapshot is served from cache. Building one chains several EC requests,
+ * reads amule.conf and has side effects (completion detection, events), and it is requested by
+ * WsBroadcastService every 2 s, SpeedHistoryService every 5 s and by Sonarr in bursts (torrents/info
+ * followed by properties/files per torrent). The TTL matches the media:transfers broadcast period,
+ * so nothing served from the cache is staler than what the UI already shows; mutations invalidate it.
+ */
+const TRANSFERS_CACHE_TTL_MS = 2000;
+
 export class MediaProviderService {
 	private providers: IMediaProvider[] = [];
 	private readonly db = container.get(MainDB);
@@ -18,6 +28,7 @@ export class MediaProviderService {
 	private readonly amuleService = container.get(AmuleService);
 	private readonly amuledService = container.get(AmuledService);
 	public readonly searchHistory = new SearchHistory();
+	private transfersCache: { snapshot: Promise<MediaTransfersResponse>; expiresAt: number } | null = null;
 
 	constructor() {
 		// Order matters: first matching provider wins for canHandleDownload
@@ -70,7 +81,25 @@ export class MediaProviderService {
 
 	// ---- Transfers -------------------------------------------------------------
 
-	async getTransfers(): Promise<MediaTransfersResponse> {
+	/** Current transfers across providers, served from a short-lived cache (see TRANSFERS_CACHE_TTL_MS). */
+	getTransfers(): Promise<MediaTransfersResponse> {
+		if (!this.transfersCache || this.transfersCache.expiresAt <= Date.now()) {
+			const entry = { snapshot: this.buildTransfers(), expiresAt: Date.now() + TRANSFERS_CACHE_TTL_MS };
+			// Don't keep a failed build around
+			entry.snapshot.catch(() => {
+				if (this.transfersCache === entry) this.transfersCache = null;
+			});
+			this.transfersCache = entry;
+		}
+		return this.transfersCache.snapshot;
+	}
+
+	/** Drops the cached snapshot so the next getTransfers() reflects a mutation immediately. */
+	private invalidateTransfers(): void {
+		this.transfersCache = null;
+	}
+
+	private async buildTransfers(): Promise<MediaTransfersResponse> {
 		const perProvider = await Promise.allSettled(this.providers.map((p) => p.getTransfers()));
 		const combined: MediaTransfer[] = [];
 		for (const r of perProvider) {
@@ -101,6 +130,7 @@ export class MediaProviderService {
 
 	async clearCompletedTransfers(hashes?: string[]): Promise<void> {
 		await Promise.allSettled(this.providers.map((p) => p.clearCompletedTransfers(hashes)));
+		this.invalidateTransfers();
 	}
 
 	// ---- Download management ---------------------------------------------------
@@ -111,6 +141,7 @@ export class MediaProviderService {
 		const provider = this.providers.find((p) => p.canHandleDownload(link));
 		if (!provider) throw new Error(`No provider can handle link: ${link}`);
 		await provider.addDownload(link);
+		this.invalidateTransfers();
 		if (!duplicate) {
 			// Providers swallow their own failures, so the tracked record is the proof that the download was really added
 			const { hash } = this.parseLinkIdentity(link);
@@ -175,6 +206,7 @@ export class MediaProviderService {
 			default:
 				throw new Error(`Unknown command: ${command}`);
 		}
+		this.invalidateTransfers();
 	}
 
 	/**
@@ -240,6 +272,7 @@ export class MediaProviderService {
 				console.error('[setFileCategory] Error moving file:', e);
 			}
 		}
+		this.invalidateTransfers();
 	}
 
 	/**
@@ -272,6 +305,7 @@ export class MediaProviderService {
 			}
 		}
 
+		this.invalidateTransfers();
 		return { moved, errors };
 	}
 
@@ -301,7 +335,10 @@ export class MediaProviderService {
 				console.log(`[cleanDeadDownloadRecords] Removed dead record: ${record.name} (${record.hash})`);
 			}
 		}
-		if (deleted > 0) console.log(`[cleanDeadDownloadRecords] Cleaned ${deleted} dead record(s) from DB`);
+		if (deleted > 0) {
+			console.log(`[cleanDeadDownloadRecords] Cleaned ${deleted} dead record(s) from DB`);
+			this.invalidateTransfers();
+		}
 		return deleted;
 	}
 
@@ -327,7 +364,7 @@ export class MediaProviderService {
 	 * Priority: AMULE_INCOMING_DIR env var → amule.conf IncomingDir.
 	 */
 	async getIncomingDir(): Promise<string> {
-		if (process.env.AMULE_INCOMING_DIR) return process.env.AMULE_INCOMING_DIR;
+		if (__APP_CONFIG__.amule.incomingDir) return __APP_CONFIG__.amule.incomingDir;
 		try {
 			const config = await this.amuledService.getConfig();
 			if (config.incomingDir) return config.incomingDir;

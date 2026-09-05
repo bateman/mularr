@@ -1,10 +1,9 @@
-import 'dotenv/config';
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 
-import { __APP_MANIFEST__ } from './app-env';
+import { __APP_CONFIG__, __APP_MANIFEST__ } from './app-env';
 import { container } from './services/container/ServiceContainer';
 import { AppEvents } from './services/AppEvents';
 import { MainDB } from './services/db/MainDB';
@@ -41,8 +40,7 @@ process.on('unhandledRejection', (reason) => {
 console.log(`Starting Mularr v${__APP_MANIFEST__.version}...`);
 
 const app = express();
-const port = process.env.PORT || 8940;
-const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../dev-data/database.sqlite');
+const { port, databasePath: dbPath } = __APP_CONFIG__;
 
 app.use(cors());
 app.use(express.json());
@@ -89,10 +87,9 @@ async function main() {
 	container.register(ExtensionsService, extensionsService);
 
 	// Initialize Telegram Service (Optional)
-	if (process.env.TELEGRAM_BOT_TOKEN) {
-		const topicId = process.env.TELEGRAM_TOPIC_ID ? parseInt(process.env.TELEGRAM_TOPIC_ID) : undefined;
-		const tgService = new TelegramBotService(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID!, topicId);
-		container.register(TelegramBotService, tgService);
+	if (__APP_CONFIG__.telegramBot) {
+		const { token, chatId, topicId } = __APP_CONFIG__.telegramBot;
+		container.register(TelegramBotService, new TelegramBotService(token, chatId, topicId));
 	}
 
 	// Initialize Telegram Indexer Service (Always init, but disconnected if no auth)

@@ -1,14 +1,15 @@
-import { exec, spawn } from 'child_process';
+import { ChildProcess, exec, spawn } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
 import net from 'net';
+import { __APP_CONFIG__ } from '../app-env';
 import { AmuleLogWatcher } from './AmuleLogWatcher';
 
 const execPromise = util.promisify(exec);
 
 export class AmuledService {
-	private readonly configDir = process.env.AMULE_CONFIG_DIR || path.join(process.env.HOME || '/home/node', '.aMule');
+	private readonly configDir = __APP_CONFIG__.amule.configDir;
 	/** Restart cycles queued or in progress; the daemon reports `isRestarting` while any is pending. */
 	private pendingRestarts = 0;
 	private _isStopping = false;
@@ -20,6 +21,11 @@ export class AmuledService {
 	 * "already running".
 	 */
 	private lifecycle: Promise<unknown> = Promise.resolve();
+	/**
+	 * The amuled spawned by this process, tracked through its exit event. Null when none is running
+	 * or when it was started elsewhere (e.g. it survived a `tsx watch` restart of the backend in dev).
+	 */
+	private daemon: ChildProcess | null = null;
 	private readonly sharedDirsManager = new AmuleSharedDirsManager(this);
 	private readonly logWatcher = new AmuleLogWatcher(this.configDir);
 
@@ -95,10 +101,14 @@ export class AmuledService {
 	}
 
 	private async killDaemon(mode: 'TERM' | 'KILL' = 'TERM'): Promise<void> {
-		const signal = mode === 'KILL' ? '-KILL' : '-TERM';
-		console.log(`🛑 Sending ${signal} to amuled...`);
+		console.log(`🛑 Sending SIG${mode} to amuled...`);
+		if (this.daemon) {
+			this.daemon.kill(mode === 'KILL' ? 'SIGKILL' : 'SIGTERM');
+			return;
+		}
+		// Not spawned by us: go through the OS
 		try {
-			await execPromise(`pkill ${signal} amuled`);
+			await execPromise(`pkill -${mode} amuled`);
 		} catch (e) {
 			// Not running — nothing to kill
 		}
@@ -148,8 +158,7 @@ export class AmuledService {
 	}
 
 	private waitForEcPort(timeoutMs: number): Promise<boolean> {
-		const ecPort = parseInt(process.env.AMULE_EC_CLIENT_PORT || '4712');
-		const ecHost = process.env.AMULE_EC_CLIENT_HOST || 'localhost';
+		const { host: ecHost, port: ecPort } = __APP_CONFIG__.amule.ec;
 		const interval = 400;
 		const deadline = Date.now() + timeoutMs;
 
@@ -208,6 +217,15 @@ export class AmuledService {
 			stdio: 'ignore',
 		});
 		child.unref();
+		child.once('error', (err) => {
+			console.error('Failed to spawn amuled:', err.message);
+			if (this.daemon === child) this.daemon = null;
+		});
+		child.once('exit', (code, signal) => {
+			console.log(`amuled exited (code ${code}, signal ${signal})`);
+			if (this.daemon === child) this.daemon = null;
+		});
+		this.daemon = child;
 		const started = await this.waitForEcPort(30000);
 		if (started) {
 			console.log('aMule daemon started successfully.');
@@ -216,7 +234,13 @@ export class AmuledService {
 		}
 	}
 
+	/**
+	 * Whether an amuled process exists. The daemon we spawned is tracked through its exit event, so
+	 * this costs nothing while it runs; pgrep is only used when we don't own one, to detect a daemon
+	 * started outside this process.
+	 */
 	async isDaemonRunning(): Promise<boolean> {
+		if (this.daemon) return true;
 		try {
 			await execPromise('pgrep amuled');
 			return true;
@@ -265,10 +289,10 @@ export class AmuledService {
 	async getConfig() {
 		const config: any = {
 			lockedFields: {
-				incomingDir: !!process.env.AMULE_INCOMING_DIR,
-				tempDir: !!process.env.AMULE_TEMP_DIR,
+				incomingDir: __APP_CONFIG__.amule.incomingDir !== undefined,
+				tempDir: __APP_CONFIG__.amule.tempDir !== undefined,
 				sharedDirs: this.sharedDirsManager.isSharedDirsLockedByEnv(),
-				ports: process.env.GLUETUN_ENABLED?.toLowerCase() === 'true',
+				ports: __APP_CONFIG__.gluetun.enabled,
 			},
 		};
 
@@ -379,15 +403,16 @@ export class AmuledService {
 			IPFilterSystem: fromBool(newConfig.ipFilterSystem),
 		};
 
-		if (process.env.GLUETUN_ENABLED?.toLowerCase() !== 'true') {
+		// Fields locked by the environment are never overwritten from the UI (see getConfig().lockedFields)
+		if (!__APP_CONFIG__.gluetun.enabled) {
 			replacements.Port = newConfig.tcpPort;
 			replacements.UDPPort = newConfig.udpPort;
 		}
 
-		if (!process.env.AMULE_INCOMING_DIR) {
+		if (__APP_CONFIG__.amule.incomingDir === undefined) {
 			replacements.IncomingDir = newConfig.incomingDir;
 		}
-		if (!process.env.AMULE_TEMP_DIR) {
+		if (__APP_CONFIG__.amule.tempDir === undefined) {
 			replacements.TempDir = newConfig.tempDir;
 		}
 
@@ -466,7 +491,8 @@ class AmuleSharedDirsManager {
 	}
 
 	public isSharedDirsLockedByEnv(): boolean {
-		return !!process.env.AMULE_SHAREDDIR_RECURSIVE || !!process.env.AMULE_SHAREDDIR_EXPLICIT;
+		const { sharedDirsRecursive, sharedDirsExplicit } = __APP_CONFIG__.amule;
+		return sharedDirsRecursive !== undefined || sharedDirsExplicit !== undefined;
 	}
 
 	private readPathListFile(fileName: string): string[] {
@@ -533,27 +559,6 @@ class AmuleSharedDirsManager {
 		this.writePathListFile(this.sharedDirExplicitFile, explicitDirs);
 	}
 
-	private parseSharedDirsEnvVar(rawList: string | undefined, recursive: boolean): SharedDirectoryEntry[] {
-		if (!rawList) {
-			return [];
-		}
-
-		const entries: SharedDirectoryEntry[] = [];
-		for (const rawPath of rawList.split(';')) {
-			const trimmedPath = rawPath.trim();
-			if (!trimmedPath) {
-				continue;
-			}
-			if (!path.isAbsolute(trimmedPath)) {
-				console.warn(`Ignoring non-absolute shared directory path from env: ${trimmedPath}`);
-				continue;
-			}
-			entries.push({ path: trimmedPath, recursive });
-		}
-
-		return entries;
-	}
-
 	public applySharedDirsFromEnvIfNeeded(): void {
 		if (!this.isSharedDirsLockedByEnv()) {
 			return;
@@ -561,9 +566,11 @@ class AmuleSharedDirsManager {
 
 		fs.mkdirSync(this.configDir, { recursive: true });
 
-		const fromRecursive = this.parseSharedDirsEnvVar(process.env.AMULE_SHAREDDIR_RECURSIVE, true);
-		const fromExplicit = this.parseSharedDirsEnvVar(process.env.AMULE_SHAREDDIR_EXPLICIT, false);
-		const normalized = normalizeSharedDirectories([...fromRecursive, ...fromExplicit]);
+		const { sharedDirsRecursive = [], sharedDirsExplicit = [] } = __APP_CONFIG__.amule;
+		const normalized = normalizeSharedDirectories([
+			...sharedDirsRecursive.map((dir) => ({ path: dir, recursive: true })),
+			...sharedDirsExplicit.map((dir) => ({ path: dir, recursive: false })),
+		]);
 
 		console.log('Applying shared directories from environment variables...');
 		this.setSharedDirectories(normalized);
