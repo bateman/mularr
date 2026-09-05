@@ -38,8 +38,7 @@ export class AmuleController {
 
 	updateConfig = async (req: Request, res: Response) => {
 		try {
-			await this.amuledService.updateConfig(req.body);
-			await this.amuledService.startDaemon(); // Restart the daemon after updating config
+			await this.amuledService.updateConfig(req.body); // Stops, rewrites amule.conf and restarts the daemon
 			res.json({ success: true });
 		} catch (e: any) {
 			res.status(500).json({ error: e.message });

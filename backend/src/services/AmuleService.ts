@@ -301,8 +301,13 @@ export class AmuleService {
 		if (!file.filePath || !file.fileName) throw new Error(`No path available for shared file with hash ${hash}`);
 		const filePath = path.join(file.filePath, file.fileName);
 		await fs.unlink(filePath);
-		this.client.reloadSharedFiles();
 		console.log(`Deleted shared file from disk: ${filePath}`);
+		try {
+			await this.client.reloadSharedFiles();
+		} catch (e) {
+			// The file is already gone; the shared list just stays stale until the next reload
+			console.warn('❌ EC Client reloadSharedFiles failed after deleting a shared file:', e);
+		}
 	}
 
 	async getTransfers(): Promise<{ raw: string; list: Download[]; categories: AmuleCategory[] }> {
@@ -313,11 +318,11 @@ export class AmuleService {
 			//console.log('Download Queue from EC Client:', queue);
 			let dbRecords = this.db.getAllDownloads().filter((r) => !r.provider || r.provider === 'amule');
 
-			let sharedFiles: AmuleFile[] | null = null;
-			const getSharedFiles = async () => {
-				if (sharedFiles === null) {
-					sharedFiles = await this.client.getSharedFiles();
-				}
+			// Cache the promise, not the result: the map below processes every record concurrently,
+			// so caching the resolved value would still fire one EC request per record
+			let sharedFiles: Promise<AmuleFile[]> | null = null;
+			const getSharedFiles = () => {
+				if (!sharedFiles) sharedFiles = this.client.getSharedFiles();
 				return sharedFiles;
 			};
 

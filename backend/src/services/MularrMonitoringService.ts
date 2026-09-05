@@ -65,9 +65,6 @@ export class MularrMonitoringService {
 	private async check() {
 		if (this.amuledService.isRestarting) return;
 		try {
-			let shouldRestart = false;
-			let restartReason = '';
-
 			// 1. Check Gluetun if enabled
 			if (this.gluetunService.isEnabled) {
 				const status = await this.gluetunService.getVpnStatus();
@@ -75,10 +72,10 @@ export class MularrMonitoringService {
 					this.gluetunFailures = 0; // Reset counter
 					const port = await this.gluetunService.getPortForwarded();
 					if (port) {
+						// Rewrites amule.conf and restarts the daemon in one serialized cycle when the port changed
 						const changed = await this.amuledService.updateCoreConfig(port);
 						if (changed) {
-							shouldRestart = true;
-							restartReason = `🔄 Gluetun port changed to ${port}`;
+							await this.notify(`🔄 Gluetun port changed to ${port}. aMule restarted with the new port.`);
 						}
 					}
 				} else {
@@ -99,20 +96,10 @@ export class MularrMonitoringService {
 			}
 
 			// 2. Check aMule daemon status
-			const isRunning = await this.amuledService.isDaemonRunning();
-			if (!isRunning) {
-				shouldRestart = true;
-				restartReason = restartReason ? `${restartReason} and ⚠️ aMule daemon was not running` : '⚠️ aMule daemon was not running';
-			}
-
-			if (shouldRestart) {
-				console.log(`${restartReason}. Restarting/Starting aMule daemon...`);
-				await this.notify(`${restartReason}. Restarting aMule...`);
-				if (isRunning) {
-					await this.amuledService.restartDaemon();
-				} else {
-					await this.amuledService.startDaemon();
-				}
+			if (!(await this.amuledService.isDaemonRunning())) {
+				console.log('⚠️ aMule daemon was not running. Starting aMule daemon...');
+				await this.notify('⚠️ aMule daemon was not running. Starting aMule...');
+				await this.amuledService.startDaemon();
 			}
 		} catch (error: any) {
 			console.error('Mularr Monitoring Service Error:', error.message);

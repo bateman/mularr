@@ -28,6 +28,18 @@ function parseQuery(req: IncomingMessage): URLSearchParams {
 	return new URL(req.url ?? '/', 'http://localhost').searchParams;
 }
 
+/** Which credential kinds the request carried, for the 401 log. Values are never included: they are the tokens themselves. */
+function describePresentedCredentials(req: IncomingMessage): string {
+	const present: string[] = [];
+	if (req.headers.authorization) present.push('Authorization header');
+	if (req.headers['x-api-key']) present.push('X-Api-Key header');
+	if (parseSidCookie(req)) present.push('SID cookie');
+	const query = parseQuery(req);
+	if (query.has('apikey')) present.push('apikey query param');
+	if (query.has('token')) present.push('token query param');
+	return present.length > 0 ? present.join(', ') : 'none';
+}
+
 /**
  * Authenticates a raw `http.IncomingMessage`, so it works both for Express
  * routes and for the WebSocket upgrade request (which never reaches Express).
@@ -110,10 +122,10 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 		authService.clearSidCookie(res);
 	}
 
-	console.warn(`[AuthMiddleware] Unauthorized request to ${req.method} ${req.path}`);
-	// DEBUG INFO
-	console.log('Headers:', req.headers);
-	console.log('Query:', req.query);
+	// Never dump headers or query here: they carry the tokens and API keys themselves
+	console.warn(
+		`[AuthMiddleware] Unauthorized request to ${req.method} ${req.path} from ${req.socket.remoteAddress} (credentials presented: ${describePresentedCredentials(req)})`
+	);
 
 	res.status(401).json({ error: 'Unauthorized' });
 }

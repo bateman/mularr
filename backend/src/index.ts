@@ -32,6 +32,12 @@ import { blacklistRoutes } from './routes/blacklistRoutes';
 import { authMiddleware } from './middleware/authMiddleware';
 import { AuthService } from './services/AuthService';
 
+// A rejected promise nobody awaited (fire-and-forget calls, listeners) must not take the whole
+// container down with it, which is Node's default. Log it and keep serving.
+process.on('unhandledRejection', (reason) => {
+	console.error('[Process] Unhandled promise rejection:', reason);
+});
+
 console.log(`Starting Mularr v${__APP_MANIFEST__.version}...`);
 
 const app = express();

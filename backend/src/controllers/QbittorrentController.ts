@@ -119,12 +119,20 @@ export class QbittorrentController {
 	createCategory = async (req: Request, res: Response) => {
 		console.log('[QbittorrentController] Create Category requested');
 		const { category, savePath } = req.body;
-		console.log(`Creating category: ${category} with path: ${savePath}`);
-		this.amuleService.createCategory({
-			name: category,
-			path: savePath,
-		});
-		res.send('');
+		if (!category) {
+			return res.status(400).send('Category name is empty');
+		}
+		try {
+			console.log(`Creating category: ${category} with path: ${savePath}`);
+			await this.amuleService.createCategory({
+				name: category,
+				path: savePath,
+			});
+			res.send('');
+		} catch (e: any) {
+			console.error('QbittorrentController createCategory Error:', e);
+			res.status(500).send(e.message);
+		}
 	};
 
 	setCategory = async (req: Request, res: Response) => {
