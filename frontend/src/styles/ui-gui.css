@@ -42,6 +42,12 @@ body {
 	height: var(--ui-btn-height, 23px);
 }
 
+.ui-feature-layout-rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--ui-feature-layout-rows-gap, 5px);
+}
+
 .ui-inline-input-block {
 	display: flex;
 	align-items: center;
@@ -117,7 +123,6 @@ body {
 
 .ui-feature-topbar {
 	padding: 6px;
-	margin-bottom: 5px;
 	display: flex;
 	gap: 5px;
 	align-items: center;

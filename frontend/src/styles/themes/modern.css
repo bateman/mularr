@@ -1,7 +1,8 @@
 /* Modern theme — default. Clean light UI with a dark sidebar, larger sizing
    than the retro themes, rounded corners and lucide icons. */
 [data-theme='modern'] {
-	--ui-face: #eef1f6;
+	--ui-face: #f6f8fc;
+	/* --ui-face: #fcfdff; */
 	--ui-text: #1e293b;
 	--ui-hl: #2563eb;
 	--ui-hl-text: #ffffff;
@@ -127,6 +128,8 @@
 	--ui-close-btn-shadow: none;
 	--ui-close-btn-hover-filter: brightness(0.93);
 
+	--ui-feature-layout-rows-gap: 12px;
+
 	-webkit-font-smoothing: antialiased;
 
 	/* Specific Overrides */
@@ -213,6 +216,32 @@
 
 	.ui-panel-raised {
 		border-radius: 8px;
-		box-shadow: 0 1px 8px rgba(15, 23, 82, 0.16);
+		box-shadow: 0 1px 3px rgba(15, 23, 142, 0.1);
+	}
+
+	.view-container {
+		padding: 12px;
+	}
+
+	.ctx-menu-overlay {
+		& .ctx-menu-container {
+			border-radius: 6px;
+		}
+	}
+
+	.main-content {
+		/* background: #f4f6fa; */
+		background: #eef1f6;
+		/* #f4f6fa; #eef1f6; */
+	}
+
+	.settings-view {
+		& .settings-fieldset {
+			padding: 16px;
+		}
+
+		& .settings-grid {
+			grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+		}
 	}
 }
