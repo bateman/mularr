@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 
+# Optional UMASK (e.g. 002 -> files 664, dirs 775). Applied before creating any
+# directory and inherited by node and by the amuled process it spawns.
+if [ -n "$UMASK" ]; then
+    umask "$UMASK" || { echo "Invalid UMASK value: '$UMASK' (expected an octal mask like 002 or 022)"; exit 1; }
+    echo "Using umask $(umask)"
+fi
+
 # Define generic password hash for 'secret' if not provided?
 # For simplicity we hardcode the hash for 'secret' to match defaults.
 # MD5("secret") = 5ebe2294ecd0e0f08eab7690d2a6ee69

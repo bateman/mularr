@@ -6,11 +6,16 @@ import { AmuledService } from './AmuledService';
 import { SystemService } from './SystemService';
 import { MediaProviderService } from './mediaprovider';
 import { SpeedHistoryService } from './SpeedHistoryService';
+import { authenticateRequest } from '../middleware/authMiddleware';
+import { LoggerFactory } from './logging/Logger';
 
 interface WsMessage {
 	type: string;
 	data: unknown;
 }
+
+/** Application-defined close code (4000–4999 range) sent to clients that fail authentication. */
+const WS_CLOSE_UNAUTHORIZED = 4401;
 
 /**
  * WsBroadcastService
@@ -18,6 +23,12 @@ interface WsMessage {
  * Attaches a WebSocket server to the existing HTTP server and periodically
  * pushes telemetry data to all connected clients.  The REST API is left
  * unchanged; this service only handles server-initiated broadcasts.
+ *
+ * Authentication: the upgrade request is checked with the same rules as the
+ * web-UI REST routes (see authenticateRequest / uiAuthMiddleware): enforced
+ * only when interactive login is enabled. Browsers can't set headers on a
+ * WebSocket, so the UI passes its JWT as `/ws?token=<jwt>`. Unauthenticated
+ * clients are closed with code 4401 before any data is sent.
  *
  * Message types (server → client):
  *   amule:status       – AmuleService.getStats()           every 4 s
@@ -32,6 +43,7 @@ interface WsMessage {
  *   stats:speed-sample  – new sample from SpeedHistoryService on each tick
  */
 export class WsBroadcastService {
+	private readonly logger = LoggerFactory.create(this);
 	private wss: WebSocketServer | null = null;
 	private intervals: NodeJS.Timeout[] = [];
 	private lastRestartingState = false;
@@ -48,10 +60,17 @@ export class WsBroadcastService {
 		this.wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
 		this.wss.on('connection', (ws: WebSocket, req) => {
-			console.log(`[WS] Client connected from ${req.socket.remoteAddress}`);
+			if (!authenticateRequest(req, { scope: 'interactive' }).authorized) {
+				this.logger.warn(`Unauthorized client from ${req.socket.remoteAddress}, closing`);
+				// close() moves the socket to CLOSING synchronously, so broadcast() will skip it.
+				ws.close(WS_CLOSE_UNAUTHORIZED, 'Unauthorized');
+				return;
+			}
 
-			ws.on('close', () => console.log('[WS] Client disconnected'));
-			ws.on('error', (err) => console.error('[WS] Client error:', err.message));
+			this.logger.info(`Client connected from ${req.socket.remoteAddress}`);
+
+			ws.on('close', () => this.logger.info('Client disconnected'));
+			ws.on('error', (err) => this.logger.error('Client error:', err.message));
 
 			// Immediately feed the new client with current snapshots so it
 			// doesn't have to wait for the next broadcast cycle.
@@ -70,7 +89,7 @@ export class WsBroadcastService {
 		this.intervals.push(setInterval(() => this.pollFast(), 2000));
 
 		// Incremental aMule log feed: push new lines as soon as amuled writes them
-		this.amuled.startLogWatcher().catch((e) => console.error('[WS] log watcher error:', (e as Error).message));
+		this.amuled.startLogWatcher().catch((e) => this.logger.error('amuled log watcher error:', (e as Error).message));
 		this.logUnsubscribe = this.amuled.onLogLines((lines) => {
 			this.broadcast({ type: 'amule:log-append', data: { lines } });
 		});
@@ -149,11 +168,11 @@ export class WsBroadcastService {
 			this.media
 				.getTransfers()
 				.then((d) => this.broadcast({ type: 'media:transfers', data: d }))
-				.catch((e) => console.error('[WS] transfers error:', (e as Error).message)),
+				.catch((e) => this.logger.error('Transfers error:', (e as Error).message)),
 			this.amule
 				.getUploadQueue()
 				.then((d) => this.broadcast({ type: 'amule:upload-queue', data: d }))
-				.catch((e) => console.error('[WS] upload-queue error:', (e as Error).message)),
+				.catch((e) => this.logger.error('Upload-queue error:', (e as Error).message)),
 		]);
 	}
 
@@ -163,11 +182,11 @@ export class WsBroadcastService {
 			this.amule
 				.getStats()
 				.then((d) => this.broadcast({ type: 'amule:status', data: d }))
-				.catch((e) => console.error('[WS] status error:', (e as Error).message)),
+				.catch((e) => this.logger.error('Status error:', (e as Error).message)),
 			this.amule
 				.getSharedFiles()
 				.then((d) => this.broadcast({ type: 'amule:shared', data: d }))
-				.catch((e) => console.error('[WS] shared error:', (e as Error).message)),
+				.catch((e) => this.logger.error('Shared error:', (e as Error).message)),
 		]);
 	}
 
@@ -177,7 +196,7 @@ export class WsBroadcastService {
 			const servers = await this.amule.getServers();
 			this.broadcast({ type: 'amule:servers', data: servers });
 		} catch (e) {
-			console.error('[WS] servers error:', (e as Error).message);
+			this.logger.error('Servers error:', (e as Error).message);
 		}
 	}
 
@@ -195,7 +214,7 @@ export class WsBroadcastService {
 			const info = await this.system.getSystemInfo();
 			this.broadcast({ type: 'system:info', data: info });
 		} catch (e) {
-			console.error('[WS] system-info error:', (e as Error).message);
+			this.logger.error('System-info error:', (e as Error).message);
 		}
 	}
 }

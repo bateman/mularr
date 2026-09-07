@@ -5,7 +5,7 @@ import { ListManager, RowSelectionManager } from '../../utils/ListManager';
 import { smartLoad } from '../../utils/scheduling';
 import { DialogService } from '../../services/DialogService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
-import { MediaApiService, SearchResult } from '../../services/MediaApiService';
+import { MediaApiService, MediaSearchResult } from '../../services/MediaApiService';
 import { ExtensionsApiService } from '../../services/ExtensionsApiService';
 import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
 import { ContextMenuItem, ContextMenuService } from '../../services/ContextMenuService';
@@ -15,7 +15,12 @@ import { Ed2kDownloadForm } from './Ed2kDownloadForm';
 import tpl from './SearchView.html';
 import './SearchView.css';
 
-function buildContextMenuActions(result: SearchResult, selectionMgr: RowSelectionManager, list: SearchResult[], onBlacklisted: () => void): ContextMenuItem[] {
+function buildContextMenuActions(
+	result: MediaSearchResult,
+	selectionMgr: RowSelectionManager,
+	list: MediaSearchResult[],
+	onBlacklisted: () => void
+): ContextMenuItem[] {
 	const actions: ContextMenuItem[] = [];
 	const selected = selectionMgr.selectedHashes.get();
 	const targets = selected.size > 0 ? list.filter((r) => r.hash && selected.has(r.hash)) : [result];
@@ -53,7 +58,7 @@ function buildContextMenuActions(result: SearchResult, selectionMgr: RowSelectio
 	return actions;
 }
 
-const MOBILE_SORT_OPTIONS: { value: string; label: string; col: keyof SearchResult; dir: 'asc' | 'desc' }[] = [
+const MOBILE_SORT_OPTIONS: { value: string; label: string; col: keyof MediaSearchResult; dir: 'asc' | 'desc' }[] = [
 	{ value: 'name-asc', label: 'Name A→Z', col: 'name', dir: 'asc' },
 	{ value: 'name-desc', label: 'Name Z→A', col: 'name', dir: 'desc' },
 	{ value: 'provider-asc', label: 'Provider A→Z', col: 'provider', dir: 'asc' },
@@ -70,7 +75,7 @@ interface ResultsRowsProps {
 	selectionMgr: RowSelectionManager;
 	onBlacklisted: () => void;
 }
-const ResultsRows = componentList<SearchResult, ResultsRowsProps>(
+const ResultsRows = componentList<MediaSearchResult, ResultsRowsProps>(
 	(res, i, l, props) => {
 		const onDownload = props!.onDownload;
 		const downloadingHashes = props!.downloadingHashes;
@@ -141,10 +146,7 @@ const ResultsRows = componentList<SearchResult, ResultsRowsProps>(
 					inner: () => {
 						const r = res.get();
 						if (!r.sourceCount || !r.completeSourceCount) return '0%';
-						const s = parseInt(r.sourceCount);
-						const c = parseInt(r.completeSourceCount);
-						if (isNaN(s) || isNaN(c) || s === 0) return '0%';
-						return `${((c / s) * 100).toFixed(0)}% (${c})`;
+						return `${((r.completeSourceCount / r.sourceCount) * 100).toFixed(0)}% (${r.completeSourceCount})`;
 					},
 				},
 				sourceInfoCol: { inner: () => res.get().sourceName || '' },
@@ -171,7 +173,7 @@ export const SearchView = component(() => {
 	const searchQuery = signal('');
 	const searchType = signal(prefs.get('search.type', 'Global'));
 
-	const mgr = new ListManager<SearchResult, keyof SearchResult>({
+	const mgr = new ListManager<MediaSearchResult, keyof MediaSearchResult>({
 		defaultColumn: 'name',
 		numericColumns: ['size', 'sourceCount', 'completeSourceCount'],
 		mobileSortOptions: MOBILE_SORT_OPTIONS,
@@ -374,6 +376,13 @@ export const SearchView = component(() => {
 		},
 		searchProgressText: {
 			inner: () => `${Math.floor(Math.min(1, searchProgress.get()) * 100)}%`,
+		},
+		resultsCountLabel: {
+			style: { display: () => (visibleResults.get().length > 0 ? '' : 'none') },
+			inner: () => {
+				const n = visibleResults.get().length;
+				return `${n} result${n === 1 ? '' : 's'}`;
+			},
 		},
 		blacklistHiddenLabel: {
 			style: { display: () => (blacklistedCount.get() > 0 ? '' : 'none') },

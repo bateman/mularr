@@ -39,7 +39,12 @@ export interface MessageRow {
 	media_type: string | null;
 	file_name: string | null;
 	file_size: number | null;
+	/** Epoch ms of the last time Telegram confirmed the media still exists (null if never checked). Only populated by searchFiles. */
+	media_verified_at?: number | null;
 }
+
+/** Identifies one indexed message. */
+export type MessageRef = Pick<MessageRow, 'chat_id' | 'message_id'>;
 
 export interface ActiveDownloadRow {
 	hash: string;
@@ -146,6 +151,20 @@ export class TelegramIndexerDB {
 		} catch {
 			// Column already exists — ignore
 		}
+
+		// Operational per-message metadata that plays no part in search. Kept apart from
+		// messages_content so writing it never fires the FTS update trigger; add here any
+		// future field that should not touch the index. All columns nullable: a row may
+		// carry some fields and not others.
+		//   media_verified_at — epoch ms of the last time Telegram confirmed the media still exists
+		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS messages_metadata (
+				chat_id TEXT NOT NULL,
+				message_id INTEGER NOT NULL,
+				media_verified_at INTEGER,
+				PRIMARY KEY (chat_id, message_id)
+			);
+		`);
 
 		// View that joins messages with their normalized names — used as FTS5 content source
 		this.db.exec(`
@@ -349,9 +368,10 @@ export class TelegramIndexerDB {
 		const rows = this.db
 			.prepare(
 				`
-				SELECT mv.*, bm25(messages_fts) AS score
+				SELECT mv.*, mm.media_verified_at, bm25(messages_fts) AS score
 				FROM messages_fts
 				JOIN messages_view mv ON mv.id = messages_fts.rowid
+				LEFT JOIN messages_metadata mm ON mm.chat_id = mv.chat_id AND mm.message_id = mv.message_id
 				WHERE messages_fts MATCH ?
 				AND mv.has_media = 1
 				AND messages_fts.rowid > ?
@@ -363,6 +383,32 @@ export class TelegramIndexerDB {
 
 		const nextCursor = rows.length === limit ? rows[rows.length - 1].id : null;
 		return { rows, nextCursor };
+	}
+
+	/** Records that Telegram confirmed these media still exist at `verifiedAt` (epoch ms). Other metadata columns are left untouched. */
+	public markMediaVerified(refs: MessageRef[], verifiedAt: number) {
+		const upsert = this.db.prepare(
+			`INSERT INTO messages_metadata (chat_id, message_id, media_verified_at)
+			 VALUES (?, ?, ?)
+			 ON CONFLICT(chat_id, message_id) DO UPDATE SET media_verified_at = ?`
+		);
+		const upsertMany = this.db.transaction((rows: MessageRef[]) => {
+			for (const r of rows) upsert.run(r.chat_id, r.message_id, verifiedAt, verifiedAt);
+		});
+		upsertMany(refs);
+	}
+
+	/** Removes messages from the index along with their metadata; FTS rows go via the delete trigger. */
+	public deleteMessages(refs: MessageRef[]) {
+		const deleteContent = this.db.prepare('DELETE FROM messages_content WHERE chat_id = ? AND message_id = ?');
+		const deleteMetadata = this.db.prepare('DELETE FROM messages_metadata WHERE chat_id = ? AND message_id = ?');
+		const deleteMany = this.db.transaction((rows: MessageRef[]) => {
+			for (const r of rows) {
+				deleteContent.run(r.chat_id, r.message_id);
+				deleteMetadata.run(r.chat_id, r.message_id);
+			}
+		});
+		deleteMany(refs);
 	}
 
 	public getContext(chatId: string, messageId: number, window: number = 5): MessageRow[] {

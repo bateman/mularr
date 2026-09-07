@@ -9,13 +9,15 @@ export const qbittorrentRoutes = () => {
 	// Public — Sonarr/Radarr call this without a session to obtain the SID cookie
 	router.post('/auth/login', controller.login);
 
-	// App
+	// Public — kept unauthenticated so the *arr API-version probe works before login
 	router.get('/app/version', controller.getVersion);
 	router.get('/app/webapiVersion', controller.getWebApiVersion);
-	router.get('/app/preferences', controller.getPreferences);
 
 	// Everything below requires auth
 	router.use(authMiddleware);
+
+	// App — preferences expose the save/temp paths on disk, so they stay behind auth
+	router.get('/app/preferences', controller.getPreferences);
 
 	// Torrents
 	router.get('/torrents/info', controller.getTorrents);

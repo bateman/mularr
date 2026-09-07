@@ -1,6 +1,6 @@
 import { inject, component, componentList, signal, effect } from 'chispa';
 import type { SpeedSample } from '../../services/DashboardApiService';
-import type { Transfer } from '../../services/MediaApiService';
+import type { MediaTransfer } from '../../services/MediaApiService';
 import type { AmuleUpDownClient } from '../../services/AmuleApiService';
 import { WsService } from '../../services/WsService';
 import { formatSpeed, fbytes, formatRemaining } from '../../utils/formats';
@@ -74,7 +74,7 @@ function updateValueItems(items: HTMLElement[], defs: SeriesDef[], pts: SpeedSam
 
 // ── Active transfer rows ──────────────────────────────────────────────────────
 
-const ActiveRows = componentList<Transfer>(
+const ActiveRows = componentList<MediaTransfer>(
 	(t) => {
 		const tf = () => t.get();
 		const progressPct = () => {
@@ -136,7 +136,7 @@ export const DashboardView = component(() => {
 	const ws = inject(WsService);
 
 	// ── Data signals ──────────────────────────────────────────────────────
-	const activeTransfers = signal<Transfer[]>([]);
+	const activeTransfers = signal<MediaTransfer[]>([]);
 	const activeUploads = signal<AmuleUpDownClient[]>([]);
 
 	// ── Canvas + value rows (built imperatively, never re-created) ─────────

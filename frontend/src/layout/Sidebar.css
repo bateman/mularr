@@ -377,7 +377,8 @@
 		gap: 0.7em;
 		color: white;
 		.sidebar-version {
-			font-size: 0.8rem;
+			opacity: 0.9;
+			font-size: 0.7rem;
 		}
 
 		.gh-link {

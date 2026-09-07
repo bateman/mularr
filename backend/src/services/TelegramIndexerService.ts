@@ -5,16 +5,10 @@ import { Logger } from 'telegram/extensions';
 import { FloodWaitError } from 'telegram/errors/RPCErrorList';
 import { Dialog } from 'telegram/tl/custom/dialog';
 import { container } from './container/ServiceContainer';
-import { TelegramIndexerDB } from './db/TelegramIndexerDB';
+import { MessageRow, TelegramIndexerDB } from './db/TelegramIndexerDB';
 import { MainDB } from './db/MainDB';
-import { TelegramDownloadManager } from './TelegramDownloadManager';
-
-// Define a simple logger interface or use console
-const logger = {
-	info: (msg: string) => console.log(`[TelegramIndexer] ${msg}`),
-	error: (msg: string, err?: any) => console.error(`[TelegramIndexer] ${msg}`, err),
-	warn: (msg: string) => console.warn(`[TelegramIndexer] ${msg}`),
-};
+import { TelegramDownloadManager, getDownloadableDocument } from './TelegramDownloadManager';
+import { LoggerFactory } from './logging/Logger';
 
 export type AuthStatus = 'disconnected' | 'waiting_code' | 'waiting_password' | 'connected' | 'authenticating';
 
@@ -30,6 +24,7 @@ export interface TelegramIndexerSearchResult {
 }
 
 export class TelegramIndexerService {
+	private readonly logger = LoggerFactory.create(this);
 	private readonly mainDb = container.get(MainDB);
 	private client: TelegramClient | null = null;
 	private db: TelegramIndexerDB;
@@ -43,6 +38,8 @@ export class TelegramIndexerService {
 	private isIndexing = false;
 	private readonly BATCH_SIZE = 50;
 	private readonly RATE_LIMIT_DELAY = 1000;
+	/** Search hits confirmed to exist within this window are trusted without asking Telegram again. */
+	private readonly MEDIA_VERIFY_TTL_MS = 6 * 60 * 60 * 1000;
 
 	constructor() {
 		// Initialize DB
@@ -72,7 +69,7 @@ export class TelegramIndexerService {
 		if (config && config.apiId && config.apiHash) {
 			// Restore session if available
 			if (config.session) {
-				logger.info('Restoring Telegram session from DB...');
+				this.logger.info('Restoring Telegram session from DB...');
 				await this.connectClient(config.apiId, config.apiHash, config.session);
 			}
 		}
@@ -199,8 +196,8 @@ export class TelegramIndexerService {
 		this.authStatus = 'connected';
 		const session = this.client!.session.save() as unknown as string;
 		this.saveExtensionConfig({ session });
-		logger.info('Telegram login successful!');
-		this.downloadManager.resumeActiveDownloads();
+		this.logger.info('Telegram login successful!');
+		this.downloadManager.resumeActiveDownloads().catch((e) => this.logger.error('Error resuming active downloads:', e));
 		this.runIndexingLoop();
 	}
 
@@ -231,7 +228,7 @@ export class TelegramIndexerService {
 		this.client = new TelegramClient(new StringSession(sessionString), apiId, apiHash, { connectionRetries: 5 });
 		await this.client.connect();
 		this.authStatus = 'connected';
-		this.downloadManager.resumeActiveDownloads();
+		this.downloadManager.resumeActiveDownloads().catch((e) => this.logger.error('Error resuming active downloads:', e));
 		this.runIndexingLoop();
 	}
 
@@ -242,7 +239,7 @@ export class TelegramIndexerService {
 
 		try {
 			const dialogs = await this.getAllDialogs();
-			logger.info(`Found ${dialogs.length} total dialogs.`);
+			this.logger.info(`Found ${dialogs.length} total dialogs.`);
 
 			// ... (rest of function unchanged until end) ...
 
@@ -263,7 +260,7 @@ export class TelegramIndexerService {
 			}
 
 			const enabledChats = this.db.getIndexingEnabledChats();
-			logger.info(`Found ${enabledChats.length} chats enabled for indexing.`);
+			this.logger.info(`Found ${enabledChats.length} chats enabled for indexing.`);
 
 			for (const chat of enabledChats) {
 				// Find the dialog object again or use collected map
@@ -273,9 +270,9 @@ export class TelegramIndexerService {
 				}
 			}
 
-			logger.info('Full indexing cycle complete. Scheduling next check.');
+			this.logger.info('Full indexing cycle complete. Scheduling next check.');
 		} catch (error) {
-			logger.error('Error during indexing cycle:', error);
+			this.logger.error('Error during indexing cycle:', error);
 		} finally {
 			this.isIndexing = false;
 			// Schedule next run in 5 minutes (user said "consultas periodicas")
@@ -339,7 +336,7 @@ export class TelegramIndexerService {
 					this.db.registerTopic(chatId, topic.id, topic.title);
 				}
 				totalFetched += topics.length;
-				logger.info(`Registered ${totalFetched} forum topics so far for chat ${chatId}`);
+				this.logger.debug(`Registered ${totalFetched} forum topics so far for chat ${chatId}`);
 
 				// Stop if we've received everything
 				if (topics.length < PAGE || totalFetched >= (result.count ?? Infinity)) break;
@@ -355,7 +352,7 @@ export class TelegramIndexerService {
 				// Safety: if cursor didn't advance (malformed response), stop
 				if (offsetTopic === 0 && offsetId === 0) break;
 			} catch (err) {
-				logger.warn(`Could not fetch forum topics for ${chatId}: ${err}`);
+				this.logger.warn(`Could not fetch forum topics for ${chatId}: ${err}`);
 				break;
 			}
 		}
@@ -363,7 +360,7 @@ export class TelegramIndexerService {
 
 	private async indexChatHistory(entity: Api.TypeInputPeer, chatId: string, chatName: string) {
 		let lastId = this.db.getLastMessageId(chatId);
-		logger.info(`Indexing ${chatName} (ID: ${chatId}) starting from ${lastId}...`);
+		this.logger.info(`Indexing ${chatName} (ID: ${chatId}) starting from ${lastId}...`);
 
 		let hasMore = true;
 
@@ -392,7 +389,7 @@ export class TelegramIndexerService {
 					break;
 				}
 
-				logger.info(`Fetched ${messages.length} messages for ${chatName}.`);
+				this.logger.debug(`Fetched ${messages.length} messages for ${chatName}.`);
 
 				const messagesToInsert = [];
 				let maxIdInBatch = lastId;
@@ -486,10 +483,10 @@ export class TelegramIndexerService {
 			} catch (err) {
 				if (err instanceof FloodWaitError) {
 					const waitSeconds = err.seconds;
-					logger.warn(`FloodWaitError: Waiting for ${waitSeconds} seconds.`);
+					this.logger.warn(`FloodWaitError: Waiting for ${waitSeconds} seconds.`);
 					await new Promise((resolve) => setTimeout(resolve, (waitSeconds + 1) * 1000));
 				} else {
-					logger.error(`Error fetching history for ${chatName}:`, err);
+					this.logger.error(`Error fetching history for ${chatName}:`, err);
 					hasMore = false; // Abort this chat on other errors
 				}
 			}
@@ -534,23 +531,74 @@ export class TelegramIndexerService {
 			return { results: [], nextCursor: null };
 		}
 		const { rows, nextCursor } = await this.db.searchFiles(query, limit, cursorId);
-		const results = rows
-			.filter((f) => f.file_size)
-			.map((msg) => {
-				const hash = `telegram:${msg.chat_id}:${msg.message_id}`;
+		const available = await this.dropMissingMedia(rows.filter((f) => f.file_size));
+		const results = available.map((msg) => {
+			const hash = `telegram:${msg.chat_id}:${msg.message_id}`;
 
-				return {
-					name: msg.file_name || 'Unknown',
-					size: msg.file_size || 0,
-					hash: hash,
-					chatId: msg.chat_id,
-					chatTitle: msg.chat_title || undefined,
-					topicName: msg.topic_name || undefined,
-					messageId: msg.message_id,
-					type: msg.media_type || '',
-				} as TelegramIndexerSearchResult;
-			});
+			return {
+				name: msg.file_name || 'Unknown',
+				size: msg.file_size || 0,
+				hash: hash,
+				chatId: msg.chat_id,
+				chatTitle: msg.chat_title || undefined,
+				topicName: msg.topic_name || undefined,
+				messageId: msg.message_id,
+				type: msg.media_type || '',
+			} as TelegramIndexerSearchResult;
+		});
 		return { results, nextCursor };
+	}
+
+	/**
+	 * Indexed media can vanish from Telegram (deleted messages, attachments edited away),
+	 * leaving search hits that can no longer be downloaded. Re-checks `rows` against
+	 * Telegram, purges the missing ones from the index and returns only those still
+	 * available.
+	 *
+	 * Rows confirmed within MEDIA_VERIFY_TTL_MS are trusted without a call so repeated
+	 * searches (e.g. *arr batches) stay cheap; the rest cost one API call per chat per
+	 * 100 ids. Rows whose check fails (offline, FloodWait above the client threshold,
+	 * left channel...) are kept — never purge on a transient error.
+	 */
+	private async dropMissingMedia(rows: MessageRow[]): Promise<MessageRow[]> {
+		if (!this.client?.connected || this.authStatus !== 'connected') return rows;
+
+		const now = Date.now();
+		const stale = rows.filter((r) => !r.media_verified_at || now - r.media_verified_at > this.MEDIA_VERIFY_TTL_MS);
+		if (stale.length === 0) return rows;
+
+		const byChat = new Map<string, MessageRow[]>();
+		for (const row of stale) {
+			const list = byChat.get(row.chat_id) ?? [];
+			list.push(row);
+			byChat.set(row.chat_id, list);
+		}
+
+		const confirmed: MessageRow[] = [];
+		const missing: MessageRow[] = [];
+		for (const [chatId, chatRows] of byChat) {
+			try {
+				// GramJS batches ids 100 per request and yields `undefined` for deleted messages
+				const messages = await this.client.getMessages(chatId, { ids: chatRows.map((r) => r.message_id) });
+				const available = new Set<number>();
+				for (const msg of messages as Array<Api.Message | undefined>) {
+					if (msg && getDownloadableDocument(msg)) available.add(msg.id);
+				}
+				for (const row of chatRows) {
+					(available.has(row.message_id) ? confirmed : missing).push(row);
+				}
+			} catch (err) {
+				this.logger.warn(`Could not verify ${chatRows.length} media in chat ${chatId}, keeping them: ${err}`);
+			}
+		}
+
+		if (confirmed.length > 0) this.db.markMediaVerified(confirmed, now);
+		if (missing.length === 0) return rows;
+
+		this.db.deleteMessages(missing);
+		this.logger.info(`Purged ${missing.length} media no longer available on Telegram.`);
+		const gone = new Set(missing.map((r) => r.id));
+		return rows.filter((r) => !gone.has(r.id));
 	}
 
 	private async executeWithRetry<T>(fn: () => Promise<T>, retries = 5): Promise<T> {
@@ -559,12 +607,12 @@ export class TelegramIndexerService {
 		} catch (err) {
 			if (err instanceof FloodWaitError) {
 				const waitSeconds = err.seconds;
-				logger.warn(`FloodWait caught in wrapper: waiting ${waitSeconds}s`);
+				this.logger.warn(`FloodWait caught in wrapper: waiting ${waitSeconds}s`);
 				await new Promise((resolve) => setTimeout(resolve, (waitSeconds + 1) * 1000));
 				return this.executeWithRetry(fn, retries - 1);
 			}
 			if (retries > 0) {
-				logger.error(`Error in API call, retrying... (${retries} left)`, err);
+				this.logger.error(`Error in API call, retrying... (${retries} left)`, err);
 				await new Promise((resolve) => setTimeout(resolve, 2000));
 				return this.executeWithRetry(fn, retries - 1);
 			}

@@ -1,21 +1,24 @@
 import { container } from '../../container/ServiceContainer';
 import { AmuleService } from '../../AmuleService';
 import type { IMediaProvider, MediaSearchResult, MediaTransfer } from '../types';
+import { LoggerFactory } from '../../logging/Logger';
 
 export class AmuleMediaProvider implements IMediaProvider {
+	private readonly logger = LoggerFactory.create(this);
 	readonly providerId = 'amule';
+	private readonly amuleService = container.get(AmuleService);
 
 	canHandleDownload(link: string): boolean {
 		return !link.startsWith('telegram:');
 	}
 
 	async startSearch(query: string): Promise<void> {
-		await container.get(AmuleService).startSearch(query);
+		await this.amuleService.startSearch(query);
 	}
 
 	async getSearchResults(): Promise<MediaSearchResult[]> {
 		try {
-			const result = await container.get(AmuleService).getSearchResults();
+			const result = await this.amuleService.getSearchResults();
 			return (result.list || []).map((f: any) => ({
 				name: f.name,
 				size: f.size,
@@ -28,14 +31,14 @@ export class AmuleMediaProvider implements IMediaProvider {
 				provider: 'amule',
 			}));
 		} catch (e) {
-			console.error('[AmuleMediaProvider] getSearchResults error:', e);
+			this.logger.error('getSearchResults error:', e);
 			return [];
 		}
 	}
 
 	async getSearchStatus(): Promise<number> {
 		try {
-			const status = await container.get(AmuleService).getSearchStatus();
+			const status = await this.amuleService.getSearchStatus();
 			return status.progress ?? 0;
 		} catch (e) {
 			return 0;
@@ -43,42 +46,42 @@ export class AmuleMediaProvider implements IMediaProvider {
 	}
 
 	async addDownload(link: string): Promise<void> {
-		await container.get(AmuleService).addDownload(link);
+		await this.amuleService.addDownload(link);
 	}
 
 	async removeDownload(hash: string): Promise<void> {
-		await container.get(AmuleService).removeDownload(hash);
+		await this.amuleService.removeDownload(hash);
 	}
 
 	async pauseDownload(hash: string): Promise<void> {
-		await container.get(AmuleService).pauseDownload(hash);
+		await this.amuleService.pauseDownload(hash);
 	}
 
 	async resumeDownload(hash: string): Promise<void> {
-		await container.get(AmuleService).resumeDownload(hash);
+		await this.amuleService.resumeDownload(hash);
 	}
 
 	async stopDownload(hash: string): Promise<void> {
-		await container.get(AmuleService).stopDownload(hash);
+		await this.amuleService.stopDownload(hash);
 	}
 
 	async getTransfers(): Promise<MediaTransfer[]> {
 		try {
-			const result = await container.get(AmuleService).getTransfers();
+			const result = await this.amuleService.getTransfers();
 			return result.list.map((d) => ({ ...d, provider: 'amule' })) as MediaTransfer[];
 		} catch (e) {
-			console.error('[AmuleMediaProvider] getTransfers error:', e);
+			this.logger.error('getTransfers error:', e);
 			return [];
 		}
 	}
 
 	async clearCompletedTransfers(hashes?: string[]): Promise<void> {
 		if (!hashes) {
-			await container.get(AmuleService).clearCompletedTransfers();
+			await this.amuleService.clearCompletedTransfers();
 		} else {
 			const amuleHashes = hashes.filter((h) => !h.startsWith('telegram:'));
 			if (amuleHashes.length > 0) {
-				await container.get(AmuleService).clearCompletedTransfers(amuleHashes);
+				await this.amuleService.clearCompletedTransfers(amuleHashes);
 			}
 		}
 	}

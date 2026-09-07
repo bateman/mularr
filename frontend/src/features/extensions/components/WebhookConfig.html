@@ -1,0 +1,24 @@
+<div>
+	<p style="margin: 0 0 8px 0;">
+		Each selected event is sent as a <span style="font-family: monospace;">POST</span> request to:
+	</p>
+	<div class="form-group" style="margin-bottom: 12px;">
+		<input data-cb="urlInput" type="url" placeholder="http://..." style="width: 100%; font-family: monospace;" />
+	</div>
+
+	<div data-cb="eventsList" style="margin-bottom: 15px;">
+		<label data-cb="eventRow" style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; cursor: pointer;">
+			<input type="checkbox" data-cb="eventCheckbox" />
+			<span>
+				<span data-cb="eventLabel" style="font-weight: bold;"></span>
+				<span data-cb="eventId" style="font-family: monospace; font-size: 0.82em; margin-left: 5px;"></span>
+				<span data-cb="eventDescription" style="display: block; font-size: 0.82em; color: #666;"></span>
+			</span>
+		</label>
+	</div>
+
+	<div style="display: flex; justify-content: flex-end; gap: 8px;">
+		<button type="button" class="ui-btn" data-cb="btnSave">Save</button>
+		<button type="button" class="ui-btn" data-cb="btnCancel">Cancel</button>
+	</div>
+</div>

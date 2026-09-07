@@ -1,6 +1,6 @@
 import { inject, component, componentList, computed, Signal } from 'chispa';
 import { ClipboardService } from '../../services/ClipboardService';
-import { Transfer } from '../../services/MediaApiService';
+import { MediaTransfer } from '../../services/MediaApiService';
 import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
 import { getFileIcon } from '../../utils/icons';
 import { fbytes, formatRemaining } from '../../utils/formats';
@@ -11,7 +11,7 @@ import tpl from './TransferDetailsDialog.html';
 import './TransfersView.css';
 
 export interface TransferDetailsDialogProps {
-	transfer: Signal<Transfer>;
+	transfer: Signal<MediaTransfer>;
 	onClose: () => void;
 }
 
@@ -27,7 +27,7 @@ function formatPeerSourceFrom(sourceFrom?: number): string {
 	return labels[sourceFrom] || `Code ${sourceFrom}`;
 }
 
-const PeerRows = componentList<NonNullable<Transfer['sources']>[number]>(
+const PeerRows = componentList<NonNullable<MediaTransfer['sources']>[number]>(
 	(peer) => {
 		const p = () => peer.get();
 		const endpoint = () => {
@@ -63,7 +63,7 @@ const PeerRows = componentList<NonNullable<Transfer['sources']>[number]>(
 	(peer) => `${peer.ip || 'ip'}:${peer.port || 0}-${peer.clientName || 'client'}-${peer.remoteFilename || 'file'}`
 );
 
-const SourceNameRows = componentList<NonNullable<Transfer['sourceNames']>[number]>(
+const SourceNameRows = componentList<NonNullable<MediaTransfer['sourceNames']>[number]>(
 	(sourceName) => {
 		const s = () => sourceName.get();
 		return tpl.sourceNameRow({
@@ -84,7 +84,7 @@ export const TransferDetailsDialog = component<TransferDetailsDialogProps>(({ tr
 		const addedOn = t.get().addedOn;
 		return addedOn ? new Date(addedOn).toLocaleString() : '-';
 	});
-	const ed2kLink = computed(() => t.get().link || t.get().fileEd2kLink || '');
+	const ed2kLink = computed(() => t.get().link || '');
 	const hasLink = computed(() => !!ed2kLink.get());
 	const sourceNames = computed(() => {
 		const names = t.get().sourceNames || [];

@@ -1,5 +1,5 @@
 import { refBindInput, component, signal } from 'chispa';
-import { Category } from '../../../services/CategoriesApiService';
+import { MediaCategory } from '../../../services/CategoriesApiService';
 import tpl from './CategoryFormModal.html';
 
 const numberToColor = (num: number) => {
@@ -17,8 +17,8 @@ const colorToNumber = (hex: string) => {
 };
 
 export interface CategoryFormModalProps {
-	initialData?: Category;
-	onSave: (data: Partial<Category>) => void;
+	initialData?: MediaCategory;
+	onSave: (data: Partial<MediaCategory>) => void;
 	onCancel: () => void;
 }
 

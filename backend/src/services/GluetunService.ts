@@ -1,15 +1,11 @@
 import axios from 'axios';
+import { __APP_CONFIG__ } from '../app-env';
 
 export class GluetunService {
-	private readonly apiBase: string;
-
-	constructor() {
-		// Remove trailing slash if present
-		this.apiBase = (process.env.GLUETUN_API || 'http://localhost:8000/v1').replace(/\/$/, '');
-	}
+	private readonly apiBase = __APP_CONFIG__.gluetun.api;
 
 	public get isEnabled(): boolean {
-		return process.env.GLUETUN_ENABLED?.toLowerCase() === 'true';
+		return __APP_CONFIG__.gluetun.enabled;
 	}
 
 	public async getPublicIp(): Promise<string | null> {
@@ -36,17 +32,11 @@ export class GluetunService {
 		try {
 			const res = await axios.get(`${this.apiBase}/portforward`, { timeout: 5000 });
 
-			// If GLUETUN_PORT_INDEX is defined with a valid integer, pick that index from the ports array
-			const portIndexRaw = process.env.GLUETUN_PORT_INDEX;
-			if (portIndexRaw !== undefined && portIndexRaw !== '') {
-				const portIndex = parseInt(portIndexRaw, 10);
-				if (!isNaN(portIndex)) {
-					const ports = res.data?.ports;
-					if (Array.isArray(ports) && ports[portIndex] != null) {
-						return ports[portIndex];
-					}
-					return null;
-				}
+			// GLUETUN_PORT_INDEX picks one entry of the "ports" array Gluetun returns when it forwards several ports
+			const portIndex = __APP_CONFIG__.gluetun.portIndex;
+			if (portIndex !== undefined) {
+				const ports = res.data?.ports;
+				return Array.isArray(ports) && ports[portIndex] != null ? ports[portIndex] : null;
 			}
 
 			// Default behavior: use the single forwarded port

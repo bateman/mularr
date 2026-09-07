@@ -7,6 +7,7 @@ import { MediaProviderService } from '../services/mediaprovider/MediaProviderSer
 export class AmuleController {
 	private readonly amuleService = container.get(AmuleService);
 	private readonly amuledService = container.get(AmuledService);
+	private readonly mediaProviderService = container.get(MediaProviderService);
 
 	getInfo = async (req: Request, res: Response) => {
 		try {
@@ -37,12 +38,9 @@ export class AmuleController {
 
 	updateConfig = async (req: Request, res: Response) => {
 		try {
-			await this.amuledService.updateConfig(req.body);
-			await this.amuledService.startDaemon(); // Restart the daemon after updating config
+			await this.amuledService.updateConfig(req.body); // Stops, rewrites amule.conf and restarts the daemon
 			res.json({ success: true });
 		} catch (e: any) {
-			// updateConfig may have stopped the daemon before throwing — ensure it comes back up.
-			await this.amuledService.startDaemon().catch(() => {});
 			res.status(500).json({ error: e.message });
 		}
 	};
@@ -88,7 +86,7 @@ export class AmuleController {
 		try {
 			const hash = req.params.hash as string;
 			await this.amuleService.deleteSharedFile(hash);
-			await container.get(MediaProviderService).cleanDeadDownloadRecords();
+			await this.mediaProviderService.cleanDeadDownloadRecords();
 			res.json({ success: true });
 		} catch (e: any) {
 			res.status(500).json({ error: e.message });
@@ -141,34 +139,10 @@ export class AmuleController {
 		}
 	};
 
-	download = async (req: Request, res: Response) => {
-		try {
-			const { link } = req.body;
-			await this.amuleService.addDownload(link);
-			res.json({ success: true });
-		} catch (e: any) {
-			res.status(500).json({ error: e.message });
-		}
-	};
-
-	downloadCommand = async (req: Request, res: Response) => {
-		try {
-			const { hash, command } = req.body;
-			if (command === 'pause') await this.amuleService.pauseDownload(hash);
-			else if (command === 'resume') await this.amuleService.resumeDownload(hash);
-			else if (command === 'stop') await this.amuleService.stopDownload(hash);
-			else if (command === 'cancel') await this.amuleService.removeDownload(hash);
-			else throw new Error('Invalid command');
-			res.json({ success: true });
-		} catch (e: any) {
-			res.status(500).json({ error: e.message });
-		}
-	};
-
 	getCategories = async (req: Request, res: Response) => {
 		try {
 			const categories = await this.amuleService.getCategories();
-			const incomingDir = await container.get(MediaProviderService).getIncomingDir();
+			const incomingDir = await this.mediaProviderService.getIncomingDir();
 			const enriched = categories.map((c) => ({ ...c, resolvedPath: c.path || incomingDir }));
 			// Ensure a default category (id=0) is always present so the frontend can resolve its path
 			if (!enriched.some((c) => c.id === 0)) {
@@ -202,7 +176,7 @@ export class AmuleController {
 			const cat = await this.amuleService.updateCategory(parseInt(id as string), data);
 			const newPath: string | undefined = data.path;
 			if (moveFiles && newPath !== undefined && oldPath !== newPath) {
-				await container.get(MediaProviderService).moveCategoryCompletedFiles(cat.name ?? '', oldPath ?? '', newPath);
+				await this.mediaProviderService.moveCategoryCompletedFiles(cat.name, oldPath ?? '', newPath);
 			}
 			res.json(cat);
 		} catch (e: any) {

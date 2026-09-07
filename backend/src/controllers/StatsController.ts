@@ -3,9 +3,7 @@ import { container } from '../services/container/ServiceContainer';
 import { SpeedHistoryService } from '../services/SpeedHistoryService';
 
 export class StatsController {
-	private get service(): SpeedHistoryService {
-		return container.get(SpeedHistoryService);
-	}
+	private readonly service = container.get(SpeedHistoryService);
 
 	/**
 	 * GET /api/stats/speed-history

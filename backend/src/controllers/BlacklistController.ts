@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import { container } from '../services/container/ServiceContainer';
 import { MainDB } from '../services/db/MainDB';
+import { AppEvents } from '../services/AppEvents';
 
 export class BlacklistController {
 	private readonly db = container.get(MainDB);
+	private readonly events = container.get(AppEvents);
 
 	getBlacklist = async (_req: Request, res: Response) => {
 		try {
@@ -33,6 +35,7 @@ export class BlacklistController {
 			}
 			const sizeNum = Number(size);
 			this.db.addToBlacklist(hash, name ?? '', reason ?? null, sizeNum > 0 ? sizeNum : null);
+			this.events.emit('blacklist.added', { hash, name: name ?? '', size: sizeNum > 0 ? sizeNum : null, reason: reason ?? null });
 			res.status(201).json({ success: true });
 		} catch (e: any) {
 			res.status(500).json({ error: e.message });

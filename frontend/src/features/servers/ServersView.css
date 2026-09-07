@@ -1,18 +1,28 @@
 .servers-view {
-    padding: 1rem;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+	padding: 1rem;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
 }
 
 .server-list textarea {
-    width: 100%;
-    height: 400px;
-    font-family: monospace;
-    white-space: pre;
+	width: 100%;
+	height: 400px;
+	font-family: monospace;
+	white-space: pre;
 }
 
 /* Log lines flagged as critical by aMule (lines starting with "!") */
 .log-line-critical {
-    color: var(--ui-log-critical, #a04ce0);
+	color: var(--ui-log-critical, #a04ce0);
+}
+
+/* Connected Server Style */
+.connected-server-row td {
+	color: var(--ui-text-accent);
+	font-weight: bold;
+}
+/* Ensure selection visibility on connected row */
+.ui-list tr.selected.connected-server-row td {
+	color: var(--ui-hl-text);
 }

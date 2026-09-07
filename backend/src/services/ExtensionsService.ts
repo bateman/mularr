@@ -1,11 +1,25 @@
 import { MainDB, Extension, ValidationResult } from '../services/db/MainDB';
 import { container } from './container/ServiceContainer';
+import { AppEvent, AppEvents, isAppEvent } from './AppEvents';
+import { LoggerFactory } from './logging/Logger';
+
+function isHttpUrl(value: string): boolean {
+	try {
+		const parsed = new URL(value);
+		return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+	} catch {
+		return false;
+	}
+}
 
 export class ExtensionsService {
-	private db: MainDB;
+	private readonly logger = LoggerFactory.create(this);
+	private readonly db = container.get(MainDB);
+	private readonly events = container.get(AppEvents);
 
 	constructor() {
-		this.db = container.get(MainDB);
+		// Forward every app event to the 'webhook' extensions subscribed to it
+		this.events.onAny((event, payload) => this.dispatchToWebhooks(event, payload));
 	}
 
 	// CRUD Extensions
@@ -23,6 +37,76 @@ export class ExtensionsService {
 
 	toggleExtension(id: number, enabled: boolean) {
 		this.db.toggleExtension(id, enabled);
+	}
+
+	/**
+	 * Changes the endpoint an extension points to. Only the URL is editable after creation:
+	 * the type is fixed and everything else lives in `config`.
+	 */
+	updateExtensionUrl(id: number, url: unknown) {
+		const extension = this.db.getExtensionById(id);
+		if (!extension) throw new Error(`Extension ${id} not found`);
+		if (typeof url !== 'string' || !isHttpUrl(url.trim())) {
+			throw new Error('url must be a valid http(s) URL');
+		}
+		this.db.updateExtensionUrl(id, url.trim());
+	}
+
+	updateExtensionConfig(id: number, config: Record<string, unknown>) {
+		const extension = this.db.getExtensionById(id);
+		if (!extension) throw new Error(`Extension ${id} not found`);
+		if (extension.type === 'webhook') {
+			const events = config.events;
+			if (!Array.isArray(events) || !events.every(isAppEvent)) {
+				throw new Error('Webhook config must contain an "events" array of valid event names');
+			}
+		}
+		this.db.updateExtensionConfig(id, JSON.stringify(config));
+	}
+
+	// Webhooks
+	/**
+	 * Sends the event to every enabled 'webhook' extension subscribed to it.
+	 * Scheme: POST <extension.url> { event, timestamp, data }
+	 * Webhooks are called in parallel; failures are logged and never propagate.
+	 */
+	private dispatchToWebhooks(event: AppEvent, data: unknown): void {
+		try {
+			const webhooks = this.getAllExtensions().filter((v) => v.enabled && v.type === 'webhook' && this.getSubscribedEvents(v).includes(event));
+			if (webhooks.length === 0) return;
+
+			const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data });
+			for (const webhook of webhooks) void this.postWebhook(webhook, event, body);
+		} catch (error) {
+			this.logger.error(`Failed to dispatch ${event} to webhooks:`, error);
+		}
+	}
+
+	/** Never rejects: every failure is logged here. */
+	private async postWebhook(webhook: Extension, event: AppEvent, body: string): Promise<void> {
+		try {
+			const response = await fetch(webhook.url, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body,
+				signal: AbortSignal.timeout(10_000),
+			});
+			if (!response.ok) {
+				throw new Error(`Webhook responded ${response.status}`);
+			}
+		} catch (error: any) {
+			this.logger.error(`Webhook ${webhook.name} failed for ${event}:`, error?.message ?? error);
+		}
+	}
+
+	/** Events a webhook extension is subscribed to, stored as { events: string[] } in its config. */
+	private getSubscribedEvents(webhook: Extension): string[] {
+		try {
+			const config = JSON.parse(webhook.config || '{}');
+			return Array.isArray(config.events) ? config.events : [];
+		} catch {
+			return [];
+		}
 	}
 
 	// Validations
@@ -54,7 +138,7 @@ export class ExtensionsService {
 		const extensions = this.getAllExtensions().filter((v) => v.enabled && v.type === 'validator');
 		if (extensions.length === 0) return;
 
-		console.log(`[ExtensionsService] Processing file ${fileHash} (${filePath})`);
+		this.logger.debug(`Processing file ${fileHash} (${filePath})`);
 
 		for (const v of extensions) {
 			// Check if already validated (optional, but good optimize)
@@ -82,9 +166,9 @@ export class ExtensionsService {
 				// Assume response: { valid: boolean, details: string }
 				const status = data.valid ? 'passed' : 'failed';
 				this.upsertValidation(fileHash, v.id, status, data.details || 'Validation completed');
-				console.log(`[ExtensionsService] Validator ${v.name} result for ${fileHash}: ${status}`);
+				this.logger.info(`Validator ${v.name} result for ${fileHash}: ${status}`);
 			} catch (error: any) {
-				console.error(`Validator ${v.name} failed:`, error);
+				this.logger.error(`Validator ${v.name} failed:`, error);
 				this.upsertValidation(fileHash, v.id, 'failed', error.message);
 			}
 		}

@@ -1,6 +1,8 @@
 /* @import './themes.css'; */ /* Replaced by specific theme files */
 @import './ui-gui.css';
 @import './ui-modal.css';
+@import './ui-icons.css';
+@import './themes/modern.css';
 @import './themes/xp.css';
 @import './themes/classic.css';
 @import './themes/hacker.css';
