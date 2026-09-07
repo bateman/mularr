@@ -1,7 +1,10 @@
 import { inject, component, signal } from 'chispa';
 import { ExtensionsApiService, Extension, EXTENSION_TYPES } from '../../services/ExtensionsApiService';
 import { DialogService } from '../../services/DialogService';
+import { ApiError } from '../../services/BaseApiService';
 import { TelegramConfig } from './components/TelegramConfig';
+import { WebhookConfig } from './components/WebhookConfig';
+import { ExtensionUrlConfig } from './components/ExtensionUrlConfig';
 import { AddExtensionForm } from './components/AddExtensionForm';
 import tpl from './ExtensionsView.html';
 import './ExtensionsView.css';
@@ -49,14 +52,19 @@ export const ExtensionsView = component(() => {
 			render: (close) =>
 				AddExtensionForm({
 					onSave: async (v) => {
-						if (v.type !== 'telegram_indexer' && !v.url) {
+						if (EXTENSION_TYPES[v.type]?.requiresUrl && !v.url) {
 							await dialogService.alert('URL is required for this extension type');
 							return;
 						}
 						try {
-							await api.addExtension(v);
-							refresh();
+							const res = await api.addExtension(v);
+							await refresh();
 							close();
+							// A webhook does nothing until events are selected — open its config right away
+							if (v.type === 'webhook' && res?.id != null) {
+								const created = extensions.get().find((x) => x.id === res.id);
+								if (created) openWebhookDialog(created);
+							}
 						} catch (e) {
 							console.error(e);
 							await dialogService.alert('Failed to add extension', 'Error');
@@ -74,6 +82,70 @@ export const ExtensionsView = component(() => {
 			render: () => TelegramConfig(),
 		});
 	};
+
+	/** Persists a new URL for the extension; no-op when unchanged. Returns false (after alerting) if the URL is empty. */
+	const saveUrl = async (ext: Extension, url: string): Promise<boolean> => {
+		if (!url) {
+			await dialogService.alert('URL is required for this extension type');
+			return false;
+		}
+		if (url !== ext.url) await api.updateExtensionUrl(ext.id, url);
+		return true;
+	};
+
+	const openWebhookDialog = (ext: Extension) => {
+		dialogService.open({
+			title: `Webhook: ${ext.name}`,
+			width: '450px',
+			render: (close) =>
+				WebhookConfig({
+					extension: ext,
+					onSave: async ({ url, events }) => {
+						try {
+							if (!(await saveUrl(ext, url))) return;
+							await api.updateExtensionConfig(ext.id, { events });
+							refresh();
+							close();
+						} catch (e) {
+							console.error(e);
+							await dialogService.alert(e instanceof ApiError ? e.message : 'Failed to save webhook configuration', 'Error');
+						}
+					},
+					onCancel: close,
+				}),
+		});
+	};
+
+	const openUrlDialog = (ext: Extension) => {
+		dialogService.open({
+			title: `${EXTENSION_TYPES[ext.type]?.label ?? ext.type}: ${ext.name}`,
+			width: '450px',
+			render: (close) =>
+				ExtensionUrlConfig({
+					extension: ext,
+					onSave: async (url) => {
+						try {
+							if (!(await saveUrl(ext, url))) return;
+							refresh();
+							close();
+						} catch (e) {
+							console.error(e);
+							await dialogService.alert(e instanceof ApiError ? e.message : 'Failed to save extension URL', 'Error');
+						}
+					},
+					onCancel: close,
+				}),
+		});
+	};
+
+	const openConfigDialog = (ext: Extension) => {
+		if (ext.type === 'telegram_indexer') openTelegramDialog();
+		else if (ext.type === 'webhook') openWebhookDialog(ext);
+		else if (EXTENSION_TYPES[ext.type]?.requiresUrl) openUrlDialog(ext);
+	};
+
+	// Every extension that points to a URL must stay editable after creation
+	const hasConfigDialog = (ext: Extension) => ext.type === 'telegram_indexer' || !!EXTENSION_TYPES[ext.type]?.requiresUrl;
 
 	refresh();
 
@@ -103,9 +175,9 @@ export const ExtensionsView = component(() => {
 												style: { color: v.enabled ? '#46d369' : '#ff4d4d', fontWeight: 'bold' },
 											},
 											mobBtnConfigure: {
-												style: { display: v.type === 'telegram_indexer' ? '' : 'none' },
+												style: { display: hasConfigDialog(v) ? '' : 'none' },
 												onclick: () => {
-													openTelegramDialog();
+													openConfigDialog(v);
 												},
 											},
 											mobBtnToggle: {
@@ -122,9 +194,9 @@ export const ExtensionsView = component(() => {
 							enabledCol: { inner: v.enabled ? 'Yes' : 'No' },
 
 							btnConfigure: {
-								style: { display: v.type === 'telegram_indexer' ? '' : 'none' },
+								style: { display: hasConfigDialog(v) ? '' : 'none' },
 								onclick: () => {
-									openTelegramDialog();
+									openConfigDialog(v);
 								},
 							},
 

@@ -1,8 +1,10 @@
 import { BaseApiService } from './BaseApiService';
-import type { Transfer, Category, TransfersResponse, SearchResult, SearchResultsResponse, SearchStatusResponse, SuccessResponse } from './AmuleApiService';
+import type { SuccessResponse } from './AmuleApiService';
+import type { MediaCategory, MediaTransfer, MediaTransfersResponse, MediaSearchResult, MediaSearchResponse, MediaSearchStatusResponse } from './apiTypes';
 
-// Re-export so consumers can import types from a single place
-export type { Transfer, Category, TransfersResponse, SearchResult, SearchResultsResponse, SearchStatusResponse, SuccessResponse };
+export type { MediaCategory, SuccessResponse, MediaTransfer, MediaTransfersResponse, MediaSearchResult, MediaSearchResponse, MediaSearchStatusResponse };
+export type { ChunkStatus, ChunkInfo, TransferSource, TransferSourceNameCount } from './apiTypes';
+export { CHUNK_STATUS } from './apiTypes';
 
 export interface AddDownloadResponse extends SuccessResponse {
 	/** Set when the link matches an already-tracked download (same hash & size, the name may differ). */
@@ -28,8 +30,8 @@ export class MediaApiService extends BaseApiService {
 
 	// ---- Transfers -------------------------------------------------------------
 
-	async getTransfers(): Promise<TransfersResponse> {
-		return this.request<TransfersResponse>('/transfers');
+	async getTransfers(): Promise<MediaTransfersResponse> {
+		return this.request<MediaTransfersResponse>('/transfers');
 	}
 
 	async clearCompletedTransfers(hashes?: string[]): Promise<SuccessResponse> {
@@ -62,12 +64,12 @@ export class MediaApiService extends BaseApiService {
 		});
 	}
 
-	async getSearchResults(): Promise<SearchResultsResponse> {
-		return this.request<SearchResultsResponse>('/search/results');
+	async getSearchResults(): Promise<MediaSearchResponse> {
+		return this.request<MediaSearchResponse>('/search/results');
 	}
 
-	async getSearchStatus(): Promise<SearchStatusResponse> {
-		return this.request<SearchStatusResponse>('/search/status');
+	async getSearchStatus(): Promise<MediaSearchStatusResponse> {
+		return this.request<MediaSearchStatusResponse>('/search/status');
 	}
 
 	// ---- Download --------------------------------------------------------------
@@ -81,7 +83,7 @@ export class MediaApiService extends BaseApiService {
 
 	// ---- Categories (proxied from amule) --------------------------------------
 
-	async getCategories(): Promise<Category[]> {
-		return this.request<Category[]>('/categories');
+	async getCategories(): Promise<MediaCategory[]> {
+		return this.request<MediaCategory[]>('/categories');
 	}
 }

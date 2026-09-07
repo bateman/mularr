@@ -1,6 +1,7 @@
-import { signal } from 'chispa';
+import { inject, signal } from 'chispa';
+import { AuthApiService } from './AuthApiService';
 import type { StatsResponse, AmuleUpDownClient, Server, ServersResponse, AmuleFile } from './AmuleApiService';
-import type { TransfersResponse } from './MediaApiService';
+import type { MediaTransfersResponse } from './MediaApiService';
 import type { SpeedSample } from './DashboardApiService';
 import type { SystemInfo } from './SystemApiService';
 
@@ -20,6 +21,9 @@ export interface LogLine {
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
+/** Close code the backend sends when the connection failed authentication. */
+const WS_CLOSE_UNAUTHORIZED = 4401;
+
 /**
  * WsService
  *
@@ -28,12 +32,17 @@ const RECONNECT_MAX_MS = 30_000;
  *
  * Components should read these signals directly instead of polling REST
  * endpoints for periodic data.
+ *
+ * Browsers can't set headers on a WebSocket, so the session JWT is passed as
+ * `?token=` in the connection URL. If the backend rejects it (close code 4401)
+ * the token is dropped and the page reloads so the login screen is shown,
+ * mirroring how BaseApiService handles a 401 response.
  */
 export class WsService {
 	// ── Public signals ─────────────────────────────────────────────────────────
 	public readonly connected = signal(false);
 	public readonly amuleStatus = signal<StatsResponse | null>(null);
-	public readonly transfers = signal<TransfersResponse | null>(null);
+	public readonly transfers = signal<MediaTransfersResponse | null>(null);
 	public readonly uploadQueue = signal<{ list: AmuleUpDownClient[] } | null>(null);
 	public readonly speedSamples = signal<SpeedSample[]>([]);
 	public readonly amuleLog = signal<LogLine[]>([]);
@@ -42,6 +51,7 @@ export class WsService {
 	public readonly systemInfo = signal<SystemInfo | null>(null);
 
 	// ── Internals ──────────────────────────────────────────────────────────────
+	private readonly auth = inject(AuthApiService);
 	private ws: WebSocket | null = null;
 	private reconnectAttempt = 0;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -56,7 +66,10 @@ export class WsService {
 
 	private buildUrl(): string {
 		const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-		return `${proto}://${window.location.host}/ws`;
+		const url = new URL(`${proto}://${window.location.host}/ws`);
+		const token = this.auth.getToken();
+		if (token) url.searchParams.set('token', token);
+		return url.toString();
 	}
 
 	private connect(): void {
@@ -71,8 +84,17 @@ export class WsService {
 			console.log('[WS] Connected');
 		});
 
-		ws.addEventListener('close', () => {
+		ws.addEventListener('close', (ev) => {
 			this.connected.set(false);
+			if (ev.code === WS_CLOSE_UNAUTHORIZED) {
+				// Token missing, expired or invalid — same handling as a REST 401:
+				// stop reconnecting, drop the token and reload so main.ts shows LoginView.
+				console.warn('[WS] Unauthorized, reloading to login');
+				this.stopped = true;
+				this.auth.clearToken();
+				window.location.reload();
+				return;
+			}
 			console.log('[WS] Disconnected');
 			this.scheduleReconnect();
 		});
@@ -114,7 +136,7 @@ export class WsService {
 				break;
 
 			case 'media:transfers':
-				this.transfers.set(msg.data as TransfersResponse);
+				this.transfers.set(msg.data as MediaTransfersResponse);
 				break;
 
 			case 'amule:upload-queue':

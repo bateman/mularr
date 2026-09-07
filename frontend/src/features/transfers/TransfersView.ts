@@ -1,6 +1,6 @@
 import { inject, component, signal, computed, refBindSelect, effect } from 'chispa';
 import { AmuleUpDownClient } from '../../services/AmuleApiService';
-import { Transfer } from '../../services/MediaApiService';
+import { MediaTransfer } from '../../services/MediaApiService';
 import { DialogService } from '../../services/DialogService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { WsService } from '../../services/WsService';
@@ -14,7 +14,7 @@ import './TransfersView.css';
 
 export const NULL_VALUE = '-1';
 
-const MOBILE_SORT_OPTIONS: { value: string; label: string; col: keyof Transfer; dir: 'asc' | 'desc' }[] = [
+const MOBILE_SORT_OPTIONS: { value: string; label: string; col: keyof MediaTransfer; dir: 'asc' | 'desc' }[] = [
 	{ value: 'added-asc', label: 'Added ↑', col: 'addedOn', dir: 'asc' },
 	{ value: 'added-desc', label: 'Added ↓', col: 'addedOn', dir: 'desc' },
 	{ value: 'name-asc', label: 'Name A→Z', col: 'name', dir: 'asc' },
@@ -25,8 +25,8 @@ const MOBILE_SORT_OPTIONS: { value: string; label: string; col: keyof Transfer; 
 	{ value: 'provider-desc', label: 'Provider Z→A', col: 'provider', dir: 'desc' },
 ];
 
-function getSelectedTransfers(hashes: Set<string>, list: Transfer[]): Transfer[] {
-	const result: Transfer[] = [];
+function getSelectedTransfers(hashes: Set<string>, list: MediaTransfer[]): MediaTransfer[] {
+	const result: MediaTransfer[] = [];
 	for (const hash of hashes) {
 		const t = list.find((x) => x.hash === hash);
 		if (t) result.push(t);
@@ -40,7 +40,7 @@ export const TransfersView = component(() => {
 	const prefs = inject(LocalPrefsService);
 	const ws = inject(WsService);
 
-	const mgr = new ListManager<Transfer, keyof Transfer>({
+	const mgr = new ListManager<MediaTransfer, keyof MediaTransfer>({
 		defaultColumn: 'name',
 		skipSort: (list) => list.length === 1 && !list[0].name && !!list[0].rawLine,
 		mobileSortOptions: MOBILE_SORT_OPTIONS,

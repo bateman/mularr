@@ -1,27 +1,13 @@
 import { container } from './container/ServiceContainer';
 import { MediaProviderService } from './mediaprovider';
 import { AmuleService } from './AmuleService';
+import type { SpeedSample } from '../types/StatsTypes';
+import { LoggerFactory } from './logging/Logger';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface SpeedSample {
-	/** Unix timestamp (ms) */
-	ts: number;
-	/** Download speed (B/s) summed from active aMule transfers */
-	dlAmule: number;
-	/** Download speed (B/s) summed from active Telegram transfers */
-	dlTelegram: number;
-	/** Total download speed (B/s) – sum of all providers */
-	dlTotal: number;
-	/** Upload speed (B/s) from aMule global stat */
-	ulAmule: number;
-	/** Number of active aMule transfers */
-	activeAmule: number;
-	/** Number of active Telegram transfers */
-	activeTelegram: number;
-	/** Total number of shared files */
-	totalShared: number;
-}
+// Wire contract shared with the frontend (see src/types/StatsTypes.ts), re-exported for backend consumers
+export type { SpeedSample };
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
@@ -29,26 +15,22 @@ const POLL_INTERVAL_MS = 5_000; // 5 s
 const MAX_SAMPLES = 2_160; // 3 h at 5 s intervals
 
 export class SpeedHistoryService {
+	private readonly logger = LoggerFactory.create(this);
 	/** Circular buffer stored as a plain array (oldest first). */
 	private history: SpeedSample[] = [];
 	private intervalId: NodeJS.Timeout | null = null;
 	private sampleCallbacks: ((sample: SpeedSample) => void)[] = [];
+
+	private readonly mediaProvider = container.get(MediaProviderService);
+	private readonly amuleService = container.get(AmuleService);
 
 	/** Register a callback that is invoked each time a new sample is recorded. */
 	public onSample(cb: (sample: SpeedSample) => void): void {
 		this.sampleCallbacks.push(cb);
 	}
 
-	// Lazy-resolve services so the service can be constructed before they are registered
-	private get mediaProvider(): MediaProviderService {
-		return container.get(MediaProviderService);
-	}
-	private get amuleService(): AmuleService {
-		return container.get(AmuleService);
-	}
-
 	public start(): void {
-		console.log('[SpeedHistory] Starting speed-history polling...');
+		this.logger.info('Starting speed-history polling...');
 		this.poll();
 		this.intervalId = setInterval(() => this.poll(), POLL_INTERVAL_MS);
 	}
@@ -97,7 +79,7 @@ export class SpeedHistoryService {
 					}
 				}
 			} else {
-				console.warn('[SpeedHistory] Failed to get transfers:', transfersResp.reason);
+				this.logger.warn('Failed to get transfers:', transfersResp.reason);
 			}
 
 			// ── Upload speed from aMule global status ─────────────────────────
@@ -134,7 +116,7 @@ export class SpeedHistoryService {
 				}
 			}
 		} catch (err) {
-			console.error('[SpeedHistory] Unexpected error during poll:', err);
+			this.logger.error('Unexpected error during poll:', err);
 		}
 	}
 }

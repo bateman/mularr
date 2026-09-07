@@ -6,31 +6,33 @@ import { ExtensionsService } from '../services/ExtensionsService';
 import { AmuledService } from '../services/AmuledService';
 import { AuthService } from '../services/AuthService';
 import { hashToBtih, extractFileRefFromMagnet, clientHashMatchesMularrHash } from './qbittorrentMappings';
+import { LoggerFactory } from '../services/logging/Logger';
 
 /**
  * ArrController provides a qBittorrent-compatible API for Sonarr and Radarr.
  */
 export class QbittorrentController {
+	private readonly logger = LoggerFactory.create(this);
 	private readonly amuleService = container.get(AmuleService);
 	private readonly amuledService = container.get(AmuledService);
 	private readonly mediaProviderService = container.get(MediaProviderService);
 	private readonly extensionsService = container.get(ExtensionsService);
+	private readonly authService = container.get(AuthService);
 
 	// qBittorrent API: POST /api/v2/auth/login
 	login = async (req: Request, res: Response) => {
-		const authService = container.get(AuthService);
 		const { username, password } = req.body;
 
 		// If auth is not enabled, always succeed (open mode)
-		if (!authService.isAuthEnabled()) {
-			authService.setSidCookieOpenMode(res);
+		if (!this.authService.isAuthEnabled()) {
+			this.authService.setSidCookieOpenMode(res);
 			res.send('Ok.');
 			return;
 		}
 
 		// Accept username/password matching AUTH credentials, or API_KEY as password
-		const validCredentials = authService.validateCredentials(username ?? '', password ?? '');
-		const validApiKey = authService.validateApiKey(password ?? '');
+		const validCredentials = this.authService.validateCredentials(username ?? '', password ?? '');
+		const validApiKey = this.authService.validateApiKey(password ?? '');
 
 		if (!validCredentials && !validApiKey) {
 			res.send('Fails.');
@@ -41,28 +43,28 @@ export class QbittorrentController {
 		// consistent format regardless of whether login was via credentials or API key.
 		// API-key logins get a non-expiring token so integrations like Sonarr/Radarr
 		// are never broken by token expiry (they do not re-authenticate on 401).
-		const session = authService.generateToken(validCredentials ? username : '__apikey__', validApiKey);
+		const session = this.authService.generateToken(validCredentials ? username : '__apikey__', validApiKey);
 
-		console.log('[QbittorrentController] Login successful for Sonarr/Radarr');
+		this.logger.info('Login successful for Sonarr/Radarr');
 		// Max-Age matches the JWT lifetime — cookie and token expire together.
-		authService.setSidCookie(res, session);
+		this.authService.setSidCookie(res, session);
 		res.send('Ok.');
 	};
 
 	// qBittorrent API: GET /api/v2/app/version
 	getVersion = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Version requested');
+		this.logger.debug('Version requested');
 		res.send('v4.3.3');
 	};
 
 	// qBittorrent API: GET /api/v2/app/webapiVersion
 	getWebApiVersion = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] WebAPI Version requested');
+		this.logger.debug('WebAPI Version requested');
 		res.send('2.0');
 	};
 
 	getCategories = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Categories requested');
+		this.logger.debug('Categories requested');
 		const categories = await this.amuleService.getCategories();
 		const dict: any = {};
 		categories.forEach((cat) => {
@@ -76,7 +78,7 @@ export class QbittorrentController {
 	};
 
 	getProperties = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Torrent properties requested');
+		this.logger.debug('Torrent properties requested');
 		// https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-4.1)#get-torrent-generic-properties
 
 		const { hash } = req.query;
@@ -117,18 +119,26 @@ export class QbittorrentController {
 	};
 
 	createCategory = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Create Category requested');
+		this.logger.debug('Create Category requested');
 		const { category, savePath } = req.body;
-		console.log(`Creating category: ${category} with path: ${savePath}`);
-		this.amuleService.createCategory({
-			name: category,
-			path: savePath,
-		});
-		res.send('');
+		if (!category) {
+			return res.status(400).send('Category name is empty');
+		}
+		try {
+			this.logger.info(`Creating category: ${category} with path: ${savePath}`);
+			await this.amuleService.createCategory({
+				name: category,
+				path: savePath,
+			});
+			res.send('');
+		} catch (e: any) {
+			this.logger.error('QbittorrentController createCategory Error:', e);
+			res.status(500).send(e.message);
+		}
 	};
 
 	setCategory = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Set Category requested');
+		this.logger.debug('Set Category requested');
 		const { hashes, category } = req.body;
 		if (!hashes || !category) {
 			return res.status(400).send('Hash and category are required');
@@ -169,7 +179,7 @@ export class QbittorrentController {
 
 	// qBittorrent API: GET /api/v2/torrents/info
 	getTorrents = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Torrents info requested');
+		this.logger.debug('Torrents info requested');
 		const { category } = req.query;
 		try {
 			const transfers = await this.mediaProviderService.getTransfers();
@@ -196,7 +206,7 @@ export class QbittorrentController {
 				// If not valid, report state = 'checkingUP'.
 				if (t.hash && contentPath && t.statusId && t.statusId >= 9) {
 					// Trigger validation (non-blocking) - fire and forget
-					this.extensionsService.processFile(t.hash, contentPath).catch((err) => console.error(err));
+					this.extensionsService.processFile(t.hash, contentPath).catch((err) => this.logger.error('Validator processing failed:', err));
 
 					const isValid = this.extensionsService.getValidationStatus(t.hash);
 					if (!isValid) {
@@ -238,13 +248,13 @@ export class QbittorrentController {
 
 			res.json(qbitTorrents);
 		} catch (e: any) {
-			console.error('QbittorrentController getTorrents Error:', e);
+			this.logger.error('QbittorrentController getTorrents Error:', e);
 			res.status(500).json({ error: e.message });
 		}
 	};
 
 	getFiles = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Torrent files requested');
+		this.logger.debug('Torrent files requested');
 		const { hash } = req.query;
 		if (!hash || typeof hash !== 'string') {
 			return res.status(400).send('No hash provided');
@@ -271,14 +281,14 @@ export class QbittorrentController {
 
 			res.json(files);
 		} catch (e: any) {
-			console.error('QbittorrentController getFiles Error:', e);
+			this.logger.error('QbittorrentController getFiles Error:', e);
 			res.status(500).json({ error: e.message });
 		}
 	};
 
 	// qBittorrent API: POST /api/v2/torrents/add
 	addTorrent = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Add torrent requested');
+		this.logger.debug('Add torrent requested');
 		try {
 			// qBittorrent transmits URLs in a field called 'urls'
 			const { urls, category, paused, stopped } = req.body;
@@ -312,20 +322,20 @@ export class QbittorrentController {
 
 			for (const url of urlList) {
 				const trimmedUrl: string = url.trim();
-				console.log(`[QbittorrentController] Parsing magnet: ${trimmedUrl}`);
+				this.logger.debug(`Parsing magnet: ${trimmedUrl}`);
 				const fileRef = extractFileRefFromMagnet(trimmedUrl);
 				if (!fileRef) {
-					console.warn(`[QbittorrentController] ⚠️ Could not extract file reference from magnet link. Skipping.`);
+					this.logger.warn(`⚠️ Could not extract file reference from magnet link. Skipping.`);
 					continue; // Skip invalid magnet links
 				}
 
-				console.log(`[QbittorrentController] Adding download for the extracted file reference: ${fileRef.ref}`);
+				this.logger.info(`Adding download for the extracted file reference: ${fileRef.ref}`);
 				await this.mediaProviderService.addDownload(fileRef.ref);
 
 				const hash = fileRef.hash;
 
 				if (categoryId) {
-					console.log(`[QbittorrentController] Setting category ID ${categoryId} for hash ${hash}`);
+					this.logger.info(`Setting category ID ${categoryId} for hash ${hash}`);
 					// Use MediaProviderService (not amuleService) so the category
 					// persists to mularr's DB, not only in aMule over EC.
 					// getTransfers reads categoryName from the DB record, so
@@ -336,21 +346,21 @@ export class QbittorrentController {
 				}
 
 				if (shouldPause) {
-					console.log(`[QbittorrentController] Pausing download for hash ${hash}`);
+					this.logger.info(`Pausing download for hash ${hash}`);
 					await this.mediaProviderService.sendDownloadCommand(hash, 'pause');
 				}
 			}
 
 			res.send('Ok.');
 		} catch (e: any) {
-			console.error('QbittorrentController addTorrent Error:', e);
+			this.logger.error('QbittorrentController addTorrent Error:', e);
 			res.status(500).send(e.message);
 		}
 	};
 
 	// qBittorrent API: POST /api/v2/torrents/delete
 	deleteTorrent = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Delete torrent requested');
+		this.logger.debug('Delete torrent requested');
 		try {
 			const { hashes } = req.body;
 			if (!hashes) return res.status(400).send('No hashes provided');
@@ -367,13 +377,13 @@ export class QbittorrentController {
 			}
 			res.send('Ok.');
 		} catch (e: any) {
-			console.error('QbittorrentController deleteTorrent Error:', e);
+			this.logger.error('QbittorrentController deleteTorrent Error:', e);
 			res.status(500).send(e.message);
 		}
 	};
 
 	getPreferences = async (req: Request, res: Response) => {
-		console.log('[QbittorrentController] Preferences requested');
+		this.logger.debug('Preferences requested');
 		const config = await this.amuledService.getConfig();
 		res.json({
 			save_path: config.incomingDir,

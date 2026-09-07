@@ -1,11 +1,11 @@
-import { Transfer } from '../../services/MediaApiService';
+import { MediaTransfer } from '../../services/MediaApiService';
 
 function isUnknownSourceName(name?: string): boolean {
 	const normalized = (name || '').trim().toLowerCase();
 	return normalized === '' || normalized === 'unknown' || normalized === '-';
 }
 
-export function formatSourcesSummary(transfer: Transfer): string {
+export function formatSourcesSummary(transfer: MediaTransfer): string {
 	const total = Math.max(0, Number(transfer.sourceCount || 0));
 	const peers = transfer.sources || [];
 

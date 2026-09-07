@@ -25,6 +25,7 @@
 
 	.login-window-content {
 		padding: 16px;
+		padding-bottom: 6px;
 	}
 
 	.login-form {
@@ -52,5 +53,12 @@
 	.login-btn {
 		width: 100%;
 		justify-content: center;
+	}
+
+	.login-version {
+		margin-top: 8px;
+		font-size: 0.6rem;
+		color: var(--text-muted);
+		text-align: right;
 	}
 }

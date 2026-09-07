@@ -1,11 +1,11 @@
-import 'dotenv/config';
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 
-import { __APP_MANIFEST__ } from './app-env';
+import { __APP_CONFIG__, __APP_MANIFEST__ } from './app-env';
 import { container } from './services/container/ServiceContainer';
+import { AppEvents } from './services/AppEvents';
 import { MainDB } from './services/db/MainDB';
 import { AmuleService } from './services/AmuleService';
 import { TelegramBotService } from './services/TelegramBotService';
@@ -30,12 +30,20 @@ import { authRoutes } from './routes/authRoutes';
 import { blacklistRoutes } from './routes/blacklistRoutes';
 import { apiKeyOnlyAuthMiddleware, uiAuthMiddleware } from './middleware/authMiddleware';
 import { AuthService } from './services/AuthService';
+import { LoggerFactory } from './services/logging/Logger';
 
-console.log(`Starting Mularr v${__APP_MANIFEST__.version}...`);
+const logger = LoggerFactory.create('Main');
+
+// A rejected promise nobody awaited (fire-and-forget calls, listeners) must not take the whole
+// container down with it, which is Node's default. Log it and keep serving.
+process.on('unhandledRejection', (reason) => {
+	logger.error('Unhandled promise rejection:', reason);
+});
+
+logger.info(`Starting Mularr v${__APP_MANIFEST__.version}...`);
 
 const app = express();
-const port = process.env.PORT || 8940;
-const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../dev-data/database.sqlite');
+const { port, databasePath: dbPath } = __APP_CONFIG__;
 
 app.use(cors());
 app.use(express.json());
@@ -43,17 +51,18 @@ app.use(express.urlencoded({ extended: true }));
 
 // -- Initialize & register services in container ------------------------------
 
+// Event bus goes first so any service can emit or subscribe from its constructor
+container.register(AppEvents, new AppEvents());
+
 // Initialize Auth Service (must be first so middleware can use it)
 const authService = new AuthService(path.dirname(dbPath));
 container.register(AuthService, authService);
 if (authService.isInteractiveLoginEnabled()) {
-	console.log('[Auth] Interactive login ENABLED (AUTH_USERNAME/AUTH_PASSWORD set).');
+	logger.info('Interactive login ENABLED (AUTH_USERNAME/AUTH_PASSWORD set).');
 } else {
-	console.log(
-		'[Auth] Interactive login DISABLED (AUTH_USERNAME/AUTH_PASSWORD not set) — serve only behind a trusted authenticating reverse proxy.',
-	);
+	logger.info('Interactive login DISABLED (AUTH_USERNAME/AUTH_PASSWORD not set) — serve only behind a trusted authenticating reverse proxy.');
 }
-console.log(`[Auth] API_KEY auth on /api/as-* is ${authService.isApiKeyAuthEnabled() ? 'ENABLED' : 'DISABLED'}.`);
+logger.info(`API_KEY auth on /api/as-* is ${authService.isApiKeyAuthEnabled() ? 'ENABLED' : 'DISABLED'}.`);
 
 async function main() {
 	// Initialize Main DB
@@ -82,16 +91,15 @@ async function main() {
 	container.register(ExtensionsService, extensionsService);
 
 	// Initialize Telegram Service (Optional)
-	if (process.env.TELEGRAM_BOT_TOKEN) {
-		const topicId = process.env.TELEGRAM_TOPIC_ID ? parseInt(process.env.TELEGRAM_TOPIC_ID) : undefined;
-		const tgService = new TelegramBotService(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID!, topicId);
-		container.register(TelegramBotService, tgService);
+	if (__APP_CONFIG__.telegramBot) {
+		const { token, chatId, topicId } = __APP_CONFIG__.telegramBot;
+		container.register(TelegramBotService, new TelegramBotService(token, chatId, topicId));
 	}
 
 	// Initialize Telegram Indexer Service (Always init, but disconnected if no auth)
 	const indexerService = new TelegramIndexerService();
 	container.register(TelegramIndexerService, indexerService);
-	indexerService.start().catch((err) => console.error('Error starting initial Telegram indexer check:', err));
+	indexerService.start().catch((err) => logger.error('Error starting initial Telegram indexer check:', err));
 
 	// Initialize and start Mularr Monitoring Service
 	const monitoringService = new MularrMonitoringService();
@@ -156,7 +164,7 @@ async function main() {
 	// -- Log any uncaught requests to help debug ----------------------------------
 
 	app.use((req, res, next) => {
-		console.log(`Unhandled request: ${req.method} ${req.originalUrl}`);
+		logger.debug(`Unhandled request: ${req.method} ${req.originalUrl}`);
 		next();
 	});
 
@@ -167,11 +175,11 @@ async function main() {
 	wsBroadcastService.start();
 
 	httpServer.listen(port, () => {
-		console.log(`Server is running at http://localhost:${port}`);
+		logger.info(`Server is running at http://localhost:${port}`);
 	});
 }
 
 main().catch((err) => {
-	console.error('Fatal error during startup:', err);
+	logger.error('Fatal error during startup:', err);
 	process.exit(1);
 });

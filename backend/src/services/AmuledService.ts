@@ -1,16 +1,33 @@
-import { exec, spawn } from 'child_process';
+import { ChildProcess, exec, spawn } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
 import net from 'net';
+import { __APP_CONFIG__ } from '../app-env';
 import { AmuleLogWatcher } from './AmuleLogWatcher';
+import { LoggerFactory } from './logging/Logger';
 
 const execPromise = util.promisify(exec);
 
 export class AmuledService {
-	private readonly configDir = process.env.AMULE_CONFIG_DIR || path.join(process.env.HOME || '/home/node', '.aMule');
-	private _isRestarting = false;
+	private readonly logger = LoggerFactory.create(this);
+	private readonly configDir = __APP_CONFIG__.amule.configDir;
+	/** Restart cycles queued or in progress; the daemon reports `isRestarting` while any is pending. */
+	private pendingRestarts = 0;
 	private _isStopping = false;
+	/**
+	 * Serializes daemon lifecycle operations (start, restart, config rewrites). Without it a start
+	 * requested by MularrMonitoringService can interleave with a restart cycle: the monitor sees the
+	 * daemon stopped and spawns it before the new config is written (or spawns a second instance,
+	 * since startDaemon removes the lock files), and the cycle's own start is then skipped as
+	 * "already running".
+	 */
+	private lifecycle: Promise<unknown> = Promise.resolve();
+	/**
+	 * The amuled spawned by this process, tracked through its exit event. Null when none is running
+	 * or when it was started elsewhere (e.g. it survived a `tsx watch` restart of the backend in dev).
+	 */
+	private daemon: ChildProcess | null = null;
 	private readonly sharedDirsManager = new AmuleSharedDirsManager(this);
 	private readonly logWatcher = new AmuleLogWatcher(this.configDir);
 
@@ -19,76 +36,81 @@ export class AmuledService {
 	}
 
 	get isRestarting(): boolean {
-		return this._isRestarting;
+		return this.pendingRestarts > 0;
 	}
 
 	get isStopping(): boolean {
 		return this._isStopping;
 	}
 
+	/** Queues `fn` behind any lifecycle operation in progress and returns its result. */
+	private runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+		// `fn` is also the rejection handler, so the queue keeps going after a failed operation
+		const run = this.lifecycle.then(fn, fn);
+		this.lifecycle = run;
+		return run;
+	}
+
 	/**
-	 * Updates the aMule configuration file (amule.conf) with the provided TCP and UDP port values. Stops the daemon before writing the new configuration.
+	 * Stops the daemon, runs `whileStopped` (typically a config write: amuled rewrites amule.conf on
+	 * shutdown, so writing while it runs gets clobbered) and starts the daemon again, holding
+	 * `isRestarting` for the whole cycle so MularrMonitoringService and WsBroadcastService stay out
+	 * of the way. The daemon is started again even if `whileStopped` throws.
+	 */
+	private restartDaemonWith(whileStopped?: () => Promise<void> | void): Promise<void> {
+		this.pendingRestarts++; // counted from enqueue time so a queued cycle already reads as restarting
+		return this.runExclusive(async () => {
+			try {
+				await this.stopDaemon();
+				try {
+					await whileStopped?.();
+				} finally {
+					await this.startDaemonInternal();
+				}
+			} finally {
+				this.pendingRestarts--;
+			}
+		});
+	}
+
+	/**
+	 * Sets the TCP and UDP ports in amule.conf and restarts the daemon so they take effect.
 	 * @param port The new TCP and UDP port number to be set in amule.conf.
-	 * @throws Will throw an error if amule.conf is not found or if there is an issue writing to the file.
-	 * @returns A boolean indicating whether the configuration was changed (true) or not (false).
+	 * @returns Whether the configuration changed (and the daemon was therefore restarted).
 	 */
 	async updateCoreConfig(port: number): Promise<boolean> {
 		try {
 			const confPath = path.join(this.configDir, 'amule.conf');
 
 			if (!fs.existsSync(confPath)) {
-				console.error('amule.conf not found at', confPath);
+				this.logger.error('amule.conf not found at', confPath);
 				return false;
 			}
 
-			let content = fs.readFileSync(confPath, 'utf-8');
-			let changed = false;
+			// Both ports get the same value: VPN port forwarding hands out one port for TCP and UDP
+			const withPorts = (content: string) => content.replace(/^Port=\d+$/m, `Port=${port}`).replace(/^UDPPort=\d+$/m, `UDPPort=${port}`);
+			const current = fs.readFileSync(confPath, 'utf-8');
+			if (withPorts(current) === current) return false; // already set (or no Port lines to update)
 
-			// Update TCP Port
-			if (content.match(new RegExp(`^Port=${port}$`, 'm'))) {
-				// already set
-			} else {
-				// Replace Port=...
-				const newContent = content.replace(/^Port=\d+$/m, `Port=${port}`);
-				if (newContent !== content) {
-					content = newContent;
-					changed = true;
-				} else {
-					// Maybe it wasn't there, append or ignore?
-					// Usually it is there if generated.
-				}
-			}
-
-			// Update UDP Port (usually same as TCP or TCP+3, but let's set same for now or follow request)
-			// User asked "returns {port: xxx}". Usually VPN port forwarding gives one port for both TCP/UDP or just TCP.
-			// Let's assume we use the same port for both as is common in VPN setups for eMule forward.
-			if (content.match(new RegExp(`^UDPPort=${port}$`, 'm'))) {
-				// already set
-			} else {
-				const newContent = content.replace(/^UDPPort=\d+$/m, `UDPPort=${port}`);
-				if (newContent !== content) {
-					content = newContent;
-					changed = true;
-				}
-			}
-
-			if (changed) {
-				await this.stopDaemon(); // Stop the daemon before writing config
-				console.log(`Updating amule.conf ports to ${port}`);
-				fs.writeFileSync(confPath, content, 'utf-8');
-				return true;
-			}
+			this.logger.info(`Updating amule.conf ports to ${port}`);
+			// Re-read inside the cycle: amuled rewrites amule.conf on shutdown, so `current` is stale by then
+			await this.restartDaemonWith(() => fs.writeFileSync(confPath, withPorts(fs.readFileSync(confPath, 'utf-8')), 'utf-8'));
+			return true;
 		} catch (e) {
-			console.error('Error updating amule.conf:', e);
+			this.logger.error('Error updating amule.conf:', e);
 		}
 		return false;
 	}
 
 	private async killDaemon(mode: 'TERM' | 'KILL' = 'TERM'): Promise<void> {
-		const signal = mode === 'KILL' ? '-KILL' : '-TERM';
-		console.log(`🛑 Sending ${signal} to amuled...`);
+		this.logger.info(`🛑 Sending SIG${mode} to amuled...`);
+		if (this.daemon) {
+			this.daemon.kill(mode === 'KILL' ? 'SIGKILL' : 'SIGTERM');
+			return;
+		}
+		// Not spawned by us: go through the OS
 		try {
-			await execPromise(`pkill ${signal} amuled`);
+			await execPromise(`pkill -${mode} amuled`);
 		} catch (e) {
 			// Not running — nothing to kill
 		}
@@ -106,7 +128,7 @@ export class AmuledService {
 		// Poll until the process is confirmed dead (up to 8 s)
 		const killed = await this.waitForProcessDead(8000);
 		if (!killed) {
-			console.warn('amuled did not stop gracefully, sending SIGKILL...');
+			this.logger.warn('amuled did not stop gracefully, sending SIGKILL...');
 			await this.killDaemon('KILL');
 			// Give the kernel a moment to reap it
 			await new Promise((resolve) => setTimeout(resolve, 500));
@@ -115,19 +137,15 @@ export class AmuledService {
 	}
 
 	async restartDaemon(): Promise<void> {
-		if (this._isRestarting) {
-			console.warn('Restart already in progress, skipping duplicate request.');
+		if (this.isRestarting) {
+			this.logger.warn('Restart already in progress, skipping duplicate request.');
 			return;
 		}
-		this._isRestarting = true;
-		console.log('Restarting aMule daemon...');
+		this.logger.info('Restarting aMule daemon...');
 		try {
-			await this.stopDaemon();
-			await this.startDaemon();
+			await this.restartDaemonWith();
 		} catch (e) {
-			console.error('Failed to restart amuled:', e);
-		} finally {
-			this._isRestarting = false;
+			this.logger.error('Failed to restart amuled:', e);
 		}
 	}
 
@@ -142,8 +160,7 @@ export class AmuledService {
 	}
 
 	private waitForEcPort(timeoutMs: number): Promise<boolean> {
-		const ecPort = parseInt(process.env.AMULE_EC_CLIENT_PORT || '4712');
-		const ecHost = process.env.AMULE_EC_CLIENT_HOST || 'localhost';
+		const { host: ecHost, port: ecPort } = __APP_CONFIG__.amule.ec;
 		const interval = 400;
 		const deadline = Date.now() + timeoutMs;
 
@@ -169,16 +186,21 @@ export class AmuledService {
 		return probe();
 	}
 
-	async startDaemon(): Promise<void> {
+	/** Starts the daemon unless it is already running. Serialized with restarts, see `lifecycle`. */
+	startDaemon(): Promise<void> {
+		return this.runExclusive(() => this.startDaemonInternal());
+	}
+
+	private async startDaemonInternal(): Promise<void> {
 		// Force kill any zombie amuled that holds the port but isn't responding
 		const running = await this.isDaemonRunning();
 		if (running) {
 			const ecReachable = await this.waitForEcPort(2000);
 			if (ecReachable) {
-				console.log('aMule daemon already running, skipping start.');
+				this.logger.info('aMule daemon already running, skipping start.');
 				return;
 			}
-			console.warn('amuled process found but EC port unreachable — force killing zombie...');
+			this.logger.warn('amuled process found but EC port unreachable — force killing zombie...');
 			await this.killDaemon('KILL');
 			await new Promise((resolve) => setTimeout(resolve, 1500));
 		}
@@ -186,26 +208,41 @@ export class AmuledService {
 		for (const lockFile of ['amuled.lock', 'amuled.pid', '.lock', 'muleLock']) {
 			try {
 				fs.rmSync(path.join(this.configDir, lockFile));
-				console.log(`Removed stale lock file: ${lockFile}`);
+				this.logger.info(`Removed stale lock file: ${lockFile}`);
 			} catch {
 				// File didn't exist — ignore
 			}
 		}
-		console.log('Starting aMule daemon...');
+		this.logger.info('Starting aMule daemon...');
 		const child = spawn('amuled', ['-c', this.configDir], {
 			detached: true,
 			stdio: 'ignore',
 		});
 		child.unref();
+		child.once('error', (err) => {
+			this.logger.error('Failed to spawn amuled:', err.message);
+			if (this.daemon === child) this.daemon = null;
+		});
+		child.once('exit', (code, signal) => {
+			this.logger.info(`amuled exited (code ${code}, signal ${signal})`);
+			if (this.daemon === child) this.daemon = null;
+		});
+		this.daemon = child;
 		const started = await this.waitForEcPort(30000);
 		if (started) {
-			console.log('aMule daemon started successfully.');
+			this.logger.info('aMule daemon started successfully.');
 		} else {
-			console.error('aMule daemon may not have started — EC port not reachable after 30 s.');
+			this.logger.error('aMule daemon may not have started — EC port not reachable after 30 s.');
 		}
 	}
 
+	/**
+	 * Whether an amuled process exists. The daemon we spawned is tracked through its exit event, so
+	 * this costs nothing while it runs; pgrep is only used when we don't own one, to detect a daemon
+	 * started outside this process.
+	 */
 	async isDaemonRunning(): Promise<boolean> {
+		if (this.daemon) return true;
 		try {
 			await execPromise('pgrep amuled');
 			return true;
@@ -225,7 +262,7 @@ export class AmuledService {
 			// Filter out empty lines if necessary, or just return trailing lines
 			return allLines.slice(-lines);
 		} catch (error) {
-			console.error('Error reading log file:', error);
+			this.logger.error('Error reading log file:', error);
 			return ['Error reading log file'];
 		}
 	}
@@ -254,10 +291,10 @@ export class AmuledService {
 	async getConfig() {
 		const config: any = {
 			lockedFields: {
-				incomingDir: !!process.env.AMULE_INCOMING_DIR,
-				tempDir: !!process.env.AMULE_TEMP_DIR,
+				incomingDir: __APP_CONFIG__.amule.incomingDir !== undefined,
+				tempDir: __APP_CONFIG__.amule.tempDir !== undefined,
 				sharedDirs: this.sharedDirsManager.isSharedDirsLockedByEnv(),
-				ports: process.env.GLUETUN_ENABLED?.toLowerCase() === 'true',
+				ports: __APP_CONFIG__.gluetun.enabled,
 			},
 		};
 
@@ -309,7 +346,7 @@ export class AmuledService {
 				config.ipFilterSystem = findVal('IPFilterSystem') === '1';
 			}
 		} catch (e) {
-			console.warn('Could not read local amule.conf:', e);
+			this.logger.warn('Could not read local amule.conf:', e);
 		}
 
 		config.sharedDirs = this.sharedDirsManager.getSharedDirectories();
@@ -322,17 +359,16 @@ export class AmuledService {
 	}
 
 	/**
-	 * Updates the aMule configuration file (amule.conf) with the provided new configuration values. Stops the daemon before writing the new configuration.
+	 * Updates amule.conf with the provided configuration values and restarts the daemon so they take
+	 * effect. The file is only written while the daemon is stopped, since amuled rewrites it on shutdown.
 	 * @param newConfig An object containing the new configuration values to be set in amule.conf.
-	 * @throws Will throw an error if amule.conf is not found or if there is an issue writing to the file.
+	 * @throws Will throw an error if amule.conf is not found, a shared directory path is not absolute, or the file cannot be written.
 	 */
 	async updateConfig(newConfig: any): Promise<void> {
 		const confPath = path.join(this.configDir, 'amule.conf');
 		if (!fs.existsSync(confPath)) {
 			throw new Error('amule.conf not found');
 		}
-
-		let content = fs.readFileSync(confPath, 'utf-8');
 
 		const fromBool = (val: boolean | undefined) => (val !== undefined ? (val ? '1' : '0') : undefined);
 
@@ -369,45 +405,43 @@ export class AmuledService {
 			IPFilterSystem: fromBool(newConfig.ipFilterSystem),
 		};
 
-		if (process.env.GLUETUN_ENABLED?.toLowerCase() !== 'true') {
+		// Fields locked by the environment are never overwritten from the UI (see getConfig().lockedFields)
+		if (!__APP_CONFIG__.gluetun.enabled) {
 			replacements.Port = newConfig.tcpPort;
 			replacements.UDPPort = newConfig.udpPort;
 		}
 
-		if (!process.env.AMULE_INCOMING_DIR) {
+		if (__APP_CONFIG__.amule.incomingDir === undefined) {
 			replacements.IncomingDir = newConfig.incomingDir;
 		}
-		if (!process.env.AMULE_TEMP_DIR) {
+		if (__APP_CONFIG__.amule.tempDir === undefined) {
 			replacements.TempDir = newConfig.tempDir;
 		}
 
-		// Validate shared dirs before stopping the daemon: normalizeSharedDirectories
+		// Validate shared dirs before touching the daemon: normalizeSharedDirectories
 		// throws on bad input, and a throw after stopDaemon would leave amuled down.
-		const applySharedDirs = !this.sharedDirsManager.isSharedDirsLockedByEnv() && newConfig.sharedDirs !== undefined && Array.isArray(newConfig.sharedDirs);
-		const normalizedSharedDirs = applySharedDirs ? normalizeSharedDirectories(newConfig.sharedDirs) : null;
+		const sharedDirs =
+			!this.sharedDirsManager.isSharedDirsLockedByEnv() && Array.isArray(newConfig.sharedDirs) ? normalizeSharedDirectories(newConfig.sharedDirs) : null;
 
-		const wasRunning = await this.isDaemonRunning();
-		await this.stopDaemon(); // Stop the daemon before writing config
+		await this.restartDaemonWith(async () => {
+			if (sharedDirs) {
+				this.sharedDirsManager.setSharedDirectories(sharedDirs);
+			}
 
-		if (normalizedSharedDirs) {
-			this.sharedDirsManager.setSharedDirectories(normalizedSharedDirs);
-		}
+			await new Promise((resolve) => setTimeout(resolve, 5000)); // Give the kernel a moment to release the port
 
-		// Only wait if we actually stopped a running daemon — gives the kernel a moment to release the port.
-		if (wasRunning) {
-			await new Promise((resolve) => setTimeout(resolve, 5000));
-		}
-
-		for (const [key, value] of Object.entries(replacements)) {
-			if (value !== undefined) {
-				const regex = new RegExp(`^${key}=.*$`, 'm');
-				if (content.match(regex)) {
-					content = content.replace(regex, `${key}=${value}`);
+			let content = fs.readFileSync(confPath, 'utf-8');
+			for (const [key, value] of Object.entries(replacements)) {
+				if (value !== undefined) {
+					const regex = new RegExp(`^${key}=.*$`, 'm');
+					if (content.match(regex)) {
+						content = content.replace(regex, `${key}=${value}`);
+					}
 				}
 			}
-		}
 
-		fs.writeFileSync(confPath, content, 'utf-8');
+			fs.writeFileSync(confPath, content, 'utf-8');
+		});
 	}
 }
 
@@ -452,6 +486,7 @@ function normalizeSharedDirectories(entries: unknown[]): SharedDirectoryEntry[] 
 }
 
 class AmuleSharedDirsManager {
+	private readonly logger = LoggerFactory.create(this);
 	private readonly sharedDirRecursiveFile = 'shareddir-recursive.dat';
 	private readonly sharedDirExplicitFile = 'shareddir-explicit.dat';
 	private readonly sharedDirFile = 'shareddir.dat'; // legacy file, used internally by amule, must be removed before writing new shared directories
@@ -463,7 +498,8 @@ class AmuleSharedDirsManager {
 	}
 
 	public isSharedDirsLockedByEnv(): boolean {
-		return !!process.env.AMULE_SHAREDDIR_RECURSIVE || !!process.env.AMULE_SHAREDDIR_EXPLICIT;
+		const { sharedDirsRecursive, sharedDirsExplicit } = __APP_CONFIG__.amule;
+		return sharedDirsRecursive !== undefined || sharedDirsExplicit !== undefined;
 	}
 
 	private readPathListFile(fileName: string): string[] {
@@ -482,8 +518,8 @@ class AmuleSharedDirsManager {
 	private writePathListFile(fileName: string, paths: string[]): void {
 		const filePath = path.join(this.configDir, fileName);
 		const content = paths.length > 0 ? `${paths.join('\n')}\n` : '';
-		console.log(`Writing to ${filePath}:`);
-		console.log(content);
+		this.logger.debug(`Writing to ${filePath}:`);
+		this.logger.debug(content);
 		fs.writeFileSync(filePath, content, 'utf-8');
 	}
 
@@ -523,32 +559,11 @@ class AmuleSharedDirsManager {
 			fs.unlinkSync(legacyFilePath);
 		}
 
-		console.log('Writing shared directories:');
-		console.log('Recursive:', recursiveDirs);
+		this.logger.debug('Writing shared directories:');
+		this.logger.debug('Recursive:', recursiveDirs);
 		this.writePathListFile(this.sharedDirRecursiveFile, recursiveDirs);
-		console.log('Explicit:', explicitDirs);
+		this.logger.debug('Explicit:', explicitDirs);
 		this.writePathListFile(this.sharedDirExplicitFile, explicitDirs);
-	}
-
-	private parseSharedDirsEnvVar(rawList: string | undefined, recursive: boolean): SharedDirectoryEntry[] {
-		if (!rawList) {
-			return [];
-		}
-
-		const entries: SharedDirectoryEntry[] = [];
-		for (const rawPath of rawList.split(';')) {
-			const trimmedPath = rawPath.trim();
-			if (!trimmedPath) {
-				continue;
-			}
-			if (!path.isAbsolute(trimmedPath)) {
-				console.warn(`Ignoring non-absolute shared directory path from env: ${trimmedPath}`);
-				continue;
-			}
-			entries.push({ path: trimmedPath, recursive });
-		}
-
-		return entries;
 	}
 
 	public applySharedDirsFromEnvIfNeeded(): void {
@@ -558,11 +573,13 @@ class AmuleSharedDirsManager {
 
 		fs.mkdirSync(this.configDir, { recursive: true });
 
-		const fromRecursive = this.parseSharedDirsEnvVar(process.env.AMULE_SHAREDDIR_RECURSIVE, true);
-		const fromExplicit = this.parseSharedDirsEnvVar(process.env.AMULE_SHAREDDIR_EXPLICIT, false);
-		const normalized = normalizeSharedDirectories([...fromRecursive, ...fromExplicit]);
+		const { sharedDirsRecursive = [], sharedDirsExplicit = [] } = __APP_CONFIG__.amule;
+		const normalized = normalizeSharedDirectories([
+			...sharedDirsRecursive.map((dir) => ({ path: dir, recursive: true })),
+			...sharedDirsExplicit.map((dir) => ({ path: dir, recursive: false })),
+		]);
 
-		console.log('Applying shared directories from environment variables...');
+		this.logger.info('Applying shared directories from environment variables...');
 		this.setSharedDirectories(normalized);
 	}
 }

@@ -1,11 +1,11 @@
 import { inject, signal, effect, WritableSignal } from 'chispa';
-import { MediaApiService, Transfer, Category } from './MediaApiService';
+import { MediaApiService, MediaTransfer, MediaCategory } from './MediaApiService';
 import { DialogService } from './DialogService';
 import { BlacklistService } from './BlacklistService';
 import { WsService } from './WsService';
 import { smartLoad } from '../utils/scheduling';
 
-function hashesToTransfers(hashes: string[], list: Transfer[]): Transfer[] {
+function hashesToTransfers(hashes: string[], list: MediaTransfer[]): MediaTransfer[] {
 	return hashes.flatMap((h) => {
 		const t = list.find((x) => x.hash === h);
 		return t ? [t] : [];
@@ -20,8 +20,8 @@ function hashesToTransfers(hashes: string[], list: Transfer[]): Transfer[] {
  * to this service so all prompting logic lives in one place.
  */
 export class TransfersContextService {
-	readonly transfers: WritableSignal<Transfer[]> = signal([]);
-	readonly categories: WritableSignal<Category[]> = signal([]);
+	readonly transfers: WritableSignal<MediaTransfer[]> = signal([]);
+	readonly categories: WritableSignal<MediaCategory[]> = signal([]);
 
 	private readonly mediaApi = inject(MediaApiService);
 	private readonly dialogService = inject(DialogService);
@@ -118,7 +118,7 @@ export class TransfersContextService {
 	// Blacklist
 	// ---------------------------------------------------------------------------
 
-	async blacklistTransfers(transfers: Transfer[]): Promise<boolean> {
+	async blacklistTransfers(transfers: MediaTransfer[]): Promise<boolean> {
 		const targets = transfers.filter((t) => t.hash);
 		if (targets.length === 0) return false;
 		const single = targets.length === 1;

@@ -3,33 +3,35 @@ import fs from 'fs';
 import path from 'path';
 import jwt from 'jsonwebtoken';
 import { Response } from 'express';
+import { __APP_CONFIG__ } from '../app-env';
+import type { AuthStatus } from '../types/AuthTypes';
+import { LoggerFactory } from './logging/Logger';
 
-export interface AuthStatus {
-	enabled: boolean;
-	hasCredentials: boolean;
-	hasApiKey: boolean;
-	interactiveLoginEnabled: boolean;
+// Wire contract shared with the frontend (see src/types/AuthTypes.ts), re-exported for backend consumers
+export type { AuthStatus };
+
+/** Constant-time comparison, so a wrong credential can't be narrowed down character by character through response timing. */
+function safeEqual(expected: string, actual: string): boolean {
+	const a = Buffer.from(expected);
+	const b = Buffer.from(actual);
+	return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 export class AuthService {
-	private readonly username?: string;
-	private readonly password?: string;
-	private readonly apiKey?: string;
+	private readonly logger = LoggerFactory.create(this);
+	private readonly username = __APP_CONFIG__.auth.username;
+	private readonly password = __APP_CONFIG__.auth.password;
+	private readonly apiKey = __APP_CONFIG__.auth.apiKey;
 	private readonly jwtSecret: string;
 
 	constructor(dataDir: string) {
-		this.username = process.env.AUTH_USERNAME;
-		this.password = process.env.AUTH_PASSWORD;
-		this.apiKey = process.env.API_KEY;
 		this.jwtSecret = this.resolveJwtSecret(dataDir);
 
 		// Partial interactive credentials are ambiguous: interactive login needs
 		// BOTH username and password, so a half-configured pair silently disables
 		// the login UI. Warn so it isn't mistaken for an enabled login.
 		if (!!this.username !== !!this.password) {
-			console.warn(
-				'[AuthService] Only one of AUTH_USERNAME/AUTH_PASSWORD is set — interactive login stays DISABLED. Set both to enable it.',
-			);
+			this.logger.warn('Only one of AUTH_USERNAME/AUTH_PASSWORD is set — interactive login stays DISABLED. Set both to enable it.');
 		}
 	}
 
@@ -39,7 +41,7 @@ export class AuthService {
 	 * random secret is generated and persisted so tokens survive restarts.
 	 */
 	private resolveJwtSecret(dataDir: string): string {
-		const envSecret = process.env.JWT_SECRET;
+		const envSecret = __APP_CONFIG__.auth.jwtSecret;
 		if (envSecret) return envSecret;
 
 		const secretPath = path.join(dataDir, 'jwt-secret');
@@ -51,10 +53,7 @@ export class AuthService {
 				// The file exists but can't be read (permissions, I/O error). Don't
 				// overwrite it — use an ephemeral secret for this run so the stored
 				// secret becomes valid again once the underlying problem is fixed.
-				console.warn(
-					`[AuthService] Could not read JWT secret from ${secretPath} — using an ephemeral secret; session tokens will be invalidated on restart.`,
-					err,
-				);
+				this.logger.warn(`Could not read JWT secret from ${secretPath} — using an ephemeral secret; session tokens will be invalidated on restart.`, err);
 				return crypto.randomBytes(48).toString('hex');
 			}
 			// File doesn't exist yet — generate and persist a new secret below
@@ -64,9 +63,9 @@ export class AuthService {
 		try {
 			fs.mkdirSync(dataDir, { recursive: true });
 			fs.writeFileSync(secretPath, secret, { encoding: 'utf-8', mode: 0o600 });
-			console.log(`[AuthService] Generated new JWT secret and saved it to ${secretPath}`);
+			this.logger.info(`Generated new JWT secret and saved it to ${secretPath}`);
 		} catch (err) {
-			console.warn(`[AuthService] Could not persist JWT secret to ${secretPath} — session tokens will be invalidated on restart.`, err);
+			this.logger.warn(`Could not persist JWT secret to ${secretPath} — session tokens will be invalidated on restart.`, err);
 		}
 		return secret;
 	}
@@ -106,17 +105,15 @@ export class AuthService {
 
 	validateCredentials(username: string, password: string): boolean {
 		if (!this.username || !this.password) return false;
-		return username === this.username && password === this.password;
+		// Compare both regardless of the first result, so timing doesn't reveal which one failed
+		const usernameOk = safeEqual(this.username, username);
+		const passwordOk = safeEqual(this.password, password);
+		return usernameOk && passwordOk;
 	}
 
 	validateApiKey(key: string): boolean {
 		if (!this.apiKey) return false;
-		// Use timing-safe comparison to prevent timing attacks
-		try {
-			return this.apiKey.length === key.length && crypto.timingSafeEqual(Buffer.from(this.apiKey), Buffer.from(key));
-		} catch {
-			return false;
-		}
+		return safeEqual(this.apiKey, key);
 	}
 
 	generateToken(username: string, noExpiry = false): string {
@@ -167,15 +164,24 @@ export class AuthService {
 		} catch {
 			maxAge = NO_EXPIRY_MAX_AGE;
 		}
-		res.setHeader('Set-Cookie', `SID=${token}; HttpOnly; Path=/; Max-Age=${maxAge}`);
+		res.setHeader('Set-Cookie', this.sidCookie(token, maxAge));
 	}
 
 	/** Clears the SID cookie by setting Max-Age=0. */
 	clearSidCookie(res: Response): void {
-		res.setHeader('Set-Cookie', 'SID=; HttpOnly; Path=/; Max-Age=0');
+		res.setHeader('Set-Cookie', this.sidCookie('', 0));
 	}
 
 	setSidCookieOpenMode(res: Response): void {
-		res.setHeader('Set-Cookie', 'SID=mularr_open; HttpOnly; Path=/; Max-Age=3600');
+		res.setHeader('Set-Cookie', this.sidCookie('mularr_open', 3600));
+	}
+
+	/**
+	 * Serializes the SID cookie. HttpOnly keeps it out of page scripts. SameSite=Strict keeps it off
+	 * cross-site requests: it only serves the qBittorrent-compatible API, whose clients (Sonarr,
+	 * Radarr...) are not browsers, so nothing legitimate needs it to travel cross-site.
+	 */
+	private sidCookie(value: string, maxAge: number): string {
+		return `SID=${value}; HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=Strict`;
 	}
 }

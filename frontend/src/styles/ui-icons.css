@@ -1,0 +1,52 @@
+/* Icons (lucide icon font + custom) — pure CSS+HTML.
+   Usage: <span class="icon icon-pencil"></span>
+   Any lucide icon name works (icon-<name>), no per-icon rule needed.
+   The glyph follows the text color; size via --icon-size. */
+
+/* @import 'lucide-static/font/lucide.css'; */
+
+.icon {
+	font-size: var(--icon-size, 16px);
+	line-height: 1;
+	display: inline-block;
+	vertical-align: text-bottom;
+	flex-shrink: 0;
+}
+
+.icon-start {
+	background-image: url('/assets/icons/Start.ico');
+}
+.icon-pause {
+	background-image: url('/assets/icons/Pause.ico');
+}
+.icon-stop {
+	background-image: url('/assets/icons/Stop.ico');
+}
+.icon-delete {
+	background-image: url('/assets/icons/Delete.ico');
+}
+.icon-settings {
+	background-image: url('/assets/icons/Preferences.ico');
+}
+.icon-upload {
+	background-image: url('/assets/icons/Upload.ico');
+}
+.icon-download {
+	background-image: url('/assets/icons/Download.ico');
+}
+.icon-fileimportparts {
+	background-image: url('/assets/icons/FileImportParts.ico');
+}
+.icon-connectdo {
+	background-image: url('/assets/icons/ConnectDo.ico');
+}
+.icon-connectdrop {
+	background-image: url('/assets/icons/ConnectDrop.ico');
+}
+
+.icon-telegram {
+	background-image: url('/assets/icons/ext/Telegram.png');
+}
+.icon-emule {
+	background-image: url('/favicon.ico');
+}

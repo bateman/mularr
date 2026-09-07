@@ -3,11 +3,7 @@ import { container } from '../services/container/ServiceContainer';
 import { ExtensionsService } from '../services/ExtensionsService';
 
 export class ExtensionsController {
-	private readonly service: ExtensionsService;
-
-	constructor() {
-		this.service = container.get(ExtensionsService);
-	}
+	private readonly service = container.get(ExtensionsService);
 
 	list = (req: Request, res: Response) => {
 		try {
@@ -21,8 +17,8 @@ export class ExtensionsController {
 	add = (req: Request, res: Response) => {
 		try {
 			const { name, url, type, enabled } = req.body;
-			this.service.addExtension({ name, url, type, enabled: enabled ? 1 : 0 });
-			res.json({ success: true });
+			const id = this.service.addExtension({ name, url, type, enabled: enabled ? 1 : 0 });
+			res.json({ success: true, id: Number(id) });
 		} catch (e: any) {
 			res.status(500).json({ error: e.message });
 		}
@@ -35,6 +31,32 @@ export class ExtensionsController {
 			res.json({ success: true });
 		} catch (e: any) {
 			res.status(500).json({ error: e.message });
+		}
+	};
+
+	update = (req: Request, res: Response) => {
+		try {
+			const { id } = req.params;
+			const { url } = req.body;
+			this.service.updateExtensionUrl(Number(id), url);
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
+		}
+	};
+
+	updateConfig = (req: Request, res: Response) => {
+		try {
+			const { id } = req.params;
+			const { config } = req.body;
+			const parsed = typeof config === 'string' ? JSON.parse(config) : config;
+			if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+				return res.status(400).json({ error: 'config must be a JSON object' });
+			}
+			this.service.updateExtensionConfig(Number(id), parsed);
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
 		}
 	};
 

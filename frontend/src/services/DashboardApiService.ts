@@ -1,15 +1,8 @@
 import { BaseApiService } from './BaseApiService';
+import type { SpeedSample } from './apiTypes';
 
-export interface SpeedSample {
-	ts: number;
-	dlAmule: number;
-	dlTelegram: number;
-	dlTotal: number;
-	ulAmule: number;
-	activeAmule: number;
-	activeTelegram: number;
-	totalShared: number;
-}
+// Wire contract owned by the backend (see apiTypes.ts)
+export type { SpeedSample };
 
 export interface SpeedHistoryResponse {
 	samples: SpeedSample[];

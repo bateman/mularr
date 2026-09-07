@@ -1,19 +1,43 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import type { AmuleCategory } from 'amule-ec-client';
+import { __APP_CONFIG__ } from '../../app-env';
 import { container } from '../container/ServiceContainer';
 import { AmuleService } from '../AmuleService';
 import { AmuledService } from '../AmuledService';
 import { MainDB, blacklistEntryMatches, type DownloadDbRecord } from '../db/MainDB';
+import { AppEvents, toDownloadEventPayload } from '../AppEvents';
 import { parseEd2kLink } from '../eD2kTools';
 import { AmuleMediaProvider } from './adapters/AmuleMediaProvider';
 import { TelegramMediaProvider } from './adapters/TelegramMediaProvider';
-import type { IMediaProvider, MediaTransfer, MediaSearchResult, MediaTransfersResponse, MediaSearchResponse, MediaSearchStatusResponse } from './types';
+import type {
+	MediaCategory,
+	IMediaProvider,
+	MediaTransfer,
+	MediaSearchResult,
+	MediaTransfersResponse,
+	MediaSearchResponse,
+	MediaSearchStatusResponse,
+} from './types';
+import { LoggerFactory } from '../logging/Logger';
+
+/**
+ * How long a transfers snapshot is served from cache. Building one chains several EC requests,
+ * reads amule.conf and has side effects (completion detection, events), and it is requested by
+ * WsBroadcastService every 2 s, SpeedHistoryService every 5 s and by Sonarr in bursts (torrents/info
+ * followed by properties/files per torrent). The TTL matches the media:transfers broadcast period,
+ * so nothing served from the cache is staler than what the UI already shows; mutations invalidate it.
+ */
+const TRANSFERS_CACHE_TTL_MS = 2000;
 
 export class MediaProviderService {
+	private readonly logger = LoggerFactory.create(this);
 	private providers: IMediaProvider[] = [];
 	private readonly db = container.get(MainDB);
+	private readonly events = container.get(AppEvents);
+	private readonly amuleService = container.get(AmuleService);
+	private readonly amuledService = container.get(AmuledService);
 	public readonly searchHistory = new SearchHistory();
+	private transfersCache: { snapshot: Promise<MediaTransfersResponse>; expiresAt: number } | null = null;
 
 	constructor() {
 		// Order matters: first matching provider wins for canHandleDownload
@@ -26,6 +50,7 @@ export class MediaProviderService {
 	async startSearch(query: string, _type?: string): Promise<void> {
 		await Promise.allSettled(this.providers.map((p) => p.startSearch(query)));
 		this.searchHistory.addEntry(query, query);
+		this.events.emit('search.started', { query });
 	}
 
 	async getSearchResults(): Promise<MediaSearchResponse> {
@@ -65,16 +90,34 @@ export class MediaProviderService {
 
 	// ---- Transfers -------------------------------------------------------------
 
-	async getTransfers(): Promise<MediaTransfersResponse> {
+	/** Current transfers across providers, served from a short-lived cache (see TRANSFERS_CACHE_TTL_MS). */
+	getTransfers(): Promise<MediaTransfersResponse> {
+		if (!this.transfersCache || this.transfersCache.expiresAt <= Date.now()) {
+			const entry = { snapshot: this.buildTransfers(), expiresAt: Date.now() + TRANSFERS_CACHE_TTL_MS };
+			// Don't keep a failed build around
+			entry.snapshot.catch(() => {
+				if (this.transfersCache === entry) this.transfersCache = null;
+			});
+			this.transfersCache = entry;
+		}
+		return this.transfersCache.snapshot;
+	}
+
+	/** Drops the cached snapshot so the next getTransfers() reflects a mutation immediately. */
+	private invalidateTransfers(): void {
+		this.transfersCache = null;
+	}
+
+	private async buildTransfers(): Promise<MediaTransfersResponse> {
 		const perProvider = await Promise.allSettled(this.providers.map((p) => p.getTransfers()));
 		const combined: MediaTransfer[] = [];
 		for (const r of perProvider) {
 			if (r.status === 'fulfilled') combined.push(...r.value);
 		}
 
-		let categories: AmuleCategory[] = [];
+		let categories: MediaCategory[] = [];
 		try {
-			categories = await container.get(AmuleService).getCategories();
+			categories = await this.amuleService.getCategories();
 		} catch (_e) {}
 
 		// Enrich each transfer with its resolved absolute file path
@@ -96,6 +139,7 @@ export class MediaProviderService {
 
 	async clearCompletedTransfers(hashes?: string[]): Promise<void> {
 		await Promise.allSettled(this.providers.map((p) => p.clearCompletedTransfers(hashes)));
+		this.invalidateTransfers();
 	}
 
 	// ---- Download management ---------------------------------------------------
@@ -106,6 +150,13 @@ export class MediaProviderService {
 		const provider = this.providers.find((p) => p.canHandleDownload(link));
 		if (!provider) throw new Error(`No provider can handle link: ${link}`);
 		await provider.addDownload(link);
+		this.invalidateTransfers();
+		if (!duplicate) {
+			// Providers swallow their own failures, so the tracked record is the proof that the download was really added
+			const { hash } = this.parseLinkIdentity(link);
+			const record = hash ? this.db.getDownload(hash) : undefined;
+			if (record) this.events.emit('download.added', { ...toDownloadEventPayload(record, provider.providerId), link });
+		}
 		return { duplicate };
 	}
 
@@ -153,13 +204,18 @@ export class MediaProviderService {
 			case 'stop':
 				await provider.stopDownload(hash);
 				break;
-			case 'cancel':
+			case 'cancel': {
+				// Read the record before removing it so the event carries name/size/category
+				const dbRecord = this.db.getDownload(hash.toLowerCase());
 				await this.deleteFileForCompletedDownload(hash);
 				await provider.removeDownload(hash);
+				this.events.emit('download.cancelled', toDownloadEventPayload(dbRecord ?? { hash }, provider.providerId));
 				break;
+			}
 			default:
 				throw new Error(`Unknown command: ${command}`);
 		}
+		this.invalidateTransfers();
 	}
 
 	/**
@@ -176,17 +232,17 @@ export class MediaProviderService {
 			const targetPath = this.resolveFilePath(dbRecord.name, cat?.path, incomingDir);
 			if (targetPath && nodePath.isAbsolute(targetPath) && fs.existsSync(targetPath)) {
 				await fs.promises.unlink(targetPath);
-				console.log(`[sendDownloadCommand] Deleted file: ${targetPath}`);
+				this.logger.info(`Deleted file: ${targetPath}`);
 			}
 		} catch (e) {
-			console.error('[sendDownloadCommand] Error deleting file on cancel:', e);
+			this.logger.error('Error deleting file on cancel:', e);
 		}
 	}
 
 	// ---- Categories (amule-specific, proxied) ----------------------------------
 
-	async getCategories(): Promise<AmuleCategory[]> {
-		return container.get(AmuleService).getCategories();
+	async getCategories(): Promise<MediaCategory[]> {
+		return this.amuleService.getCategories();
 	}
 
 	/**
@@ -196,9 +252,7 @@ export class MediaProviderService {
 	 * (no reliance on aMule's shared-files hash list).
 	 */
 	async setFileCategory(hashHex: string, categoryId: number, moveFiles = false): Promise<void> {
-		const amule = container.get(AmuleService);
-
-		const categories = await amule.getCategories();
+		const categories = await this.amuleService.getCategories();
 		const newCat = categories.find((c) => c.id === categoryId);
 
 		// Resolve old location before updating DB
@@ -207,7 +261,7 @@ export class MediaProviderService {
 		const oldCat = oldCatName ? categories.find((c) => c.name === oldCatName) : categories.find((c) => c.id === 0);
 
 		// Delegate EC protocol update to AmuleService
-		await amule.setFileCategory(hashHex, categoryId);
+		await this.amuleService.setFileCategory(hashHex, categoryId);
 
 		// Update our DB record with the new category name (or empty string for "none")
 		const catName = categoryId === 0 ? null : newCat ? newCat.name : null;
@@ -222,11 +276,12 @@ export class MediaProviderService {
 				const destPath = this.resolveFilePath(dbRecord.name, newCat?.path, incomingDir);
 
 				const wasMoved = await this.moveFile(srcPath, destPath);
-				if (wasMoved) console.log(`[setFileCategory] Moved: ${srcPath} -> ${destPath}`);
+				if (wasMoved) this.logger.info(`Moved: ${srcPath} -> ${destPath}`);
 			} catch (e: any) {
-				console.error('[setFileCategory] Error moving file:', e);
+				this.logger.error('Error moving file:', e);
 			}
 		}
+		this.invalidateTransfers();
 	}
 
 	/**
@@ -251,14 +306,15 @@ export class MediaProviderService {
 
 				const wasMoved = await this.moveFile(srcPath, destPath);
 				if (!wasMoved) continue;
-				console.log(`[moveCategoryCompletedFiles] Moved: ${srcPath} -> ${destPath}`);
+				this.logger.info(`Moved: ${srcPath} -> ${destPath}`);
 				moved++;
 			} catch (e: any) {
-				console.error(`[moveCategoryCompletedFiles] Error moving ${dl.name}:`, e);
+				this.logger.error(`Error moving ${dl.name}:`, e);
 				errors.push(`Failed to move "${dl.name}": ${e.message}`);
 			}
 		}
 
+		this.invalidateTransfers();
 		return { moved, errors };
 	}
 
@@ -285,10 +341,13 @@ export class MediaProviderService {
 			if (!fs.existsSync(filePath)) {
 				this.db.deleteDownload(record.hash);
 				deleted++;
-				console.log(`[cleanDeadDownloadRecords] Removed dead record: ${record.name} (${record.hash})`);
+				this.logger.info(`Removed dead record: ${record.name} (${record.hash})`);
 			}
 		}
-		if (deleted > 0) console.log(`[cleanDeadDownloadRecords] Cleaned ${deleted} dead record(s) from DB`);
+		if (deleted > 0) {
+			this.logger.info(`Cleaned ${deleted} dead record(s) from DB`);
+			this.invalidateTransfers();
+		}
 		return deleted;
 	}
 
@@ -314,9 +373,9 @@ export class MediaProviderService {
 	 * Priority: AMULE_INCOMING_DIR env var → amule.conf IncomingDir.
 	 */
 	async getIncomingDir(): Promise<string> {
-		if (process.env.AMULE_INCOMING_DIR) return process.env.AMULE_INCOMING_DIR;
+		if (__APP_CONFIG__.amule.incomingDir) return __APP_CONFIG__.amule.incomingDir;
 		try {
-			const config = await container.get(AmuledService).getConfig();
+			const config = await this.amuledService.getConfig();
 			if (config.incomingDir) return config.incomingDir;
 		} catch (_e) {}
 		return '/incoming'; // last-resort fallback

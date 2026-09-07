@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { LoggerFactory } from './logging/Logger';
 
 /**
  * AmuleLogWatcher
@@ -10,6 +11,7 @@ import path from 'path';
  * buffer. Tolerates logfile rotation/truncation and partially written lines.
  */
 export class AmuleLogWatcher {
+	private readonly logger = LoggerFactory.create(this);
 	/** Max log lines kept in the in-memory buffer (also the size of the initial snapshot). */
 	private static readonly BUFFER_MAX = 500;
 	/** Upper bound of logfile bytes read in a single pass; older data is skipped. */
@@ -67,9 +69,9 @@ export class AmuleLogWatcher {
 			this.watcher = fs.watch(this.configDir, (_event, filename) => {
 				if (filename === 'logfile') this.enqueueRead();
 			});
-			this.watcher.on('error', (err) => console.error('Log watcher error:', err.message));
+			this.watcher.on('error', (err) => this.logger.error('Log watcher error:', err.message));
 		} catch (e) {
-			console.error('Could not start log watcher:', e);
+			this.logger.error('Could not start log watcher:', e);
 		}
 
 		// Low-frequency resync in case a filesystem event is missed
@@ -78,9 +80,7 @@ export class AmuleLogWatcher {
 
 	/** Serializes log reads so concurrent watch events cannot interleave. */
 	private enqueueRead(): Promise<void> {
-		this.readChain = this.readChain
-			.then(() => this.readNewData())
-			.catch((e) => console.error('Error reading log file:', e));
+		this.readChain = this.readChain.then(() => this.readNewData()).catch((e) => this.logger.error('Error reading log file:', e));
 		return this.readChain;
 	}
 

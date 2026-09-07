@@ -3,9 +3,7 @@ import { container } from '../services/container/ServiceContainer';
 import { TelegramIndexerService } from '../services/TelegramIndexerService';
 
 export class TelegramController {
-	private get service(): TelegramIndexerService {
-		return container.get(TelegramIndexerService);
-	}
+	private readonly service = container.get(TelegramIndexerService);
 
 	getStatus = async (req: Request, res: Response) => {
 		try {
