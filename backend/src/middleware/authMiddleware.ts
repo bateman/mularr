@@ -155,7 +155,7 @@ export function createAuthMiddleware(opts: AuthOptions = {}) {
 
 		// Never dump headers or query here: they carry the tokens and API keys themselves
 		logger.warn(
-			`Unauthorized request to ${req.method} ${req.path} from ${req.socket.remoteAddress} (credentials presented: ${describePresentedCredentials(req)}; session allowed: ${opts.allowSession !== false})`,
+			`Unauthorized request to ${req.method} ${req.path} from ${req.socket.remoteAddress} (credentials presented: ${describePresentedCredentials(req)}; session allowed: ${opts.allowSession !== false})`
 		);
 
 		res.status(401).json({ error: 'Unauthorized' });
