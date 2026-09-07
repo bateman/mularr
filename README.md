@@ -104,7 +104,7 @@ qBittorrent-compatible client. The two are controlled independently:
 | `AUTH_USERNAME` + `AUTH_PASSWORD` | `API_KEY` | Web UI login page | Web UI / admin API           | `/api/as-*` (M2M)        |
 | :-------------------------------- | :-------- | :---------------- | :--------------------------- | :----------------------- |
 | set                               | set       | shown             | requires login session       | requires `API_KEY`/session |
-| set                               | unset     | shown             | requires login session       | requires login session   |
+| set                               | unset     | shown             | requires login session       | qBittorrent: requires login session; Torznab: **unavailable** (set `API_KEY`) |
 | unset                             | set       | **hidden**        | **open (no app-level gate)** | requires `API_KEY`       |
 | unset                             | unset     | hidden            | open                         | open                     |
 

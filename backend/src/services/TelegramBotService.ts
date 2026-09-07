@@ -1,5 +1,4 @@
-import { Bot, InputFile } from 'node-telegram-bot-api';
-import axios from 'axios';
+import { Bot } from 'node-telegram-bot-api';
 import { LoggerFactory } from './logging/Logger';
 
 export class TelegramBotService {

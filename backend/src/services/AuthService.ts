@@ -11,7 +11,8 @@ import { LoggerFactory } from './logging/Logger';
 export type { AuthStatus };
 
 /** Constant-time comparison, so a wrong credential can't be narrowed down character by character through response timing. */
-function safeEqual(expected: string, actual: string): boolean {
+function safeEqual(expected: string, actual: unknown): boolean {
+	if (typeof actual !== 'string') return false; // request bodies are untyped: a number or object must fail, not throw
 	const a = Buffer.from(expected);
 	const b = Buffer.from(actual);
 	return a.length === b.length && crypto.timingSafeEqual(a, b);
