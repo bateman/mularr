@@ -9,15 +9,7 @@ import { AppEvents, toDownloadEventPayload } from '../AppEvents';
 import { parseEd2kLink } from '../eD2kTools';
 import { AmuleMediaProvider } from './adapters/AmuleMediaProvider';
 import { TelegramMediaProvider } from './adapters/TelegramMediaProvider';
-import type {
-	MediaCategory,
-	IMediaProvider,
-	MediaTransfer,
-	MediaSearchResult,
-	MediaTransfersResponse,
-	MediaSearchResponse,
-	MediaSearchStatusResponse,
-} from './types';
+import type { MediaCategory, IMediaProvider, MediaTransfer, MediaTransfersResponse } from './types';
 import { LoggerFactory } from '../logging/Logger';
 
 /**
@@ -31,61 +23,18 @@ const TRANSFERS_CACHE_TTL_MS = 2000;
 
 export class MediaProviderService {
 	private readonly logger = LoggerFactory.create(this);
-	private providers: IMediaProvider[] = [];
+	/** Search fan-out lives in MediaSearchService, which reads the providers from here. */
+	public readonly providers: IMediaProvider[] = [];
 	private readonly db = container.get(MainDB);
 	private readonly events = container.get(AppEvents);
 	private readonly amuleService = container.get(AmuleService);
 	private readonly amuledService = container.get(AmuledService);
-	public readonly searchHistory = new SearchHistory();
 	private transfersCache: { snapshot: Promise<MediaTransfersResponse>; expiresAt: number } | null = null;
 
 	constructor() {
 		// Order matters: first matching provider wins for canHandleDownload
 		this.providers.push(new TelegramMediaProvider());
 		this.providers.push(new AmuleMediaProvider());
-	}
-
-	// ---- Search ----------------------------------------------------------------
-
-	async startSearch(query: string, _type?: string): Promise<void> {
-		await Promise.allSettled(this.providers.map((p) => p.startSearch(query)));
-		this.searchHistory.addEntry(query, query);
-		this.events.emit('search.started', { query });
-	}
-
-	async getSearchResults(): Promise<MediaSearchResponse> {
-		const perProvider = await Promise.allSettled(this.providers.map((p) => p.getSearchResults()));
-		const combined: MediaSearchResult[] = [];
-		for (const r of perProvider) {
-			if (r.status === 'fulfilled') {
-				combined.push(...r.value);
-				this.searchHistory.pushResults(r.value);
-			}
-		}
-		const { visible, blacklistedCount } = this.filterBlacklisted(combined);
-		return { raw: `Found ${visible.length} results`, list: visible, blacklistedCount };
-	}
-
-	/** Removes blacklisted results (see blacklistEntryMatches for the hash+size rule). */
-	private filterBlacklisted(results: MediaSearchResult[]): { visible: MediaSearchResult[]; blacklistedCount: number } {
-		const entries = this.db.getBlacklist();
-		if (entries.length === 0) return { visible: results, blacklistedCount: 0 };
-		const byHash = new Map(entries.map((e) => [e.hash.toLowerCase(), e]));
-		const visible = results.filter((r) => {
-			const entry = r.hash ? byHash.get(r.hash.toLowerCase()) : undefined;
-			return !entry || !blacklistEntryMatches(entry, r.size);
-		});
-		return { visible, blacklistedCount: results.length - visible.length };
-	}
-
-	async getSearchStatus(): Promise<MediaSearchStatusResponse> {
-		// Overall progress = minimum across providers (all must finish before we report 1.0)
-		const statuses = await Promise.allSettled(this.providers.map((p) => p.getSearchStatus()));
-		let min = 1;
-		for (const s of statuses) {
-			if (s.status === 'fulfilled') min = Math.min(min, s.value);
-		}
-		return { raw: `Search progress: ${(min * 100).toFixed(0)}%`, progress: min };
 	}
 
 	// ---- Transfers -------------------------------------------------------------
@@ -388,67 +337,5 @@ export class MediaProviderService {
 	private resolveFilePath(filename: string, catPath: string | undefined, incomingDir: string): string {
 		const dir = catPath || incomingDir;
 		return nodePath.join(dir, nodePath.basename(filename));
-	}
-}
-
-type MediaSearchResultsByHash = Record<string, MediaSearchResult>;
-
-interface SearchHistoryEntry {
-	id: string;
-	query: string;
-	timestamp: number;
-	results: MediaSearchResultsByHash;
-}
-
-/**
- * A simple in-memory cache for search results, keyed by query string.
- * Bad things will happend if and external service triggers a search on amule which is not handled by mularr
- */
-class SearchHistory {
-	private readonly searchesById: Record<string, SearchHistoryEntry> = {};
-	private current: SearchHistoryEntry | null = null;
-
-	addEntry(id: string, query: string, results: MediaSearchResultsByHash = {}) {
-		if (this.current) {
-			this.controlHistorySize();
-			this.searchesById[this.current.id] = this.current;
-		}
-		this.current = { id, query, timestamp: Date.now(), results };
-	}
-
-	private controlHistorySize() {
-		const MAX_HISTORY_SIZE = 10;
-		const entries = Object.values(this.searchesById);
-		if (entries.length > MAX_HISTORY_SIZE) {
-			// Sort by timestamp and remove the oldest entries
-			entries.sort((a, b) => a.timestamp - b.timestamp);
-			const excessCount = entries.length - MAX_HISTORY_SIZE;
-			for (let i = 0; i < excessCount; i++) {
-				delete this.searchesById[entries[i].id];
-			}
-		}
-	}
-
-	pushResults(results: MediaSearchResult[]) {
-		if (!this.current) return;
-		for (const r of results) {
-			this.current.results[r.hash] = r;
-		}
-	}
-
-	/**
-	 * Returns a read-only view of the search history, keyed by search ID.
-	 * The current search (if any) is not included in the returned object.
-	 */
-	getFullHistory() {
-		return this.searchesById as Readonly<typeof this.searchesById>;
-	}
-
-	deleteEntry(id: string) {
-		if (this.current?.id === id) {
-			this.current = null;
-		} else {
-			delete this.searchesById[id];
-		}
 	}
 }

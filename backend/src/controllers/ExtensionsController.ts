@@ -60,6 +60,20 @@ export class ExtensionsController {
 		}
 	};
 
+	testConnection = async (req: Request, res: Response) => {
+		try {
+			const { type, url, config } = req.body;
+			const parsed = typeof config === 'string' ? JSON.parse(config) : config;
+			if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+				return res.status(400).json({ error: 'config must be a JSON object' });
+			}
+			const message = await this.service.testConnection(type, url, parsed);
+			res.json({ success: true, message });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
+		}
+	};
+
 	toggle = (req: Request, res: Response) => {
 		try {
 			const { id } = req.params;

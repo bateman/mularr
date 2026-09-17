@@ -33,6 +33,7 @@ export const Sidebar = component<SidebarProps>((props) => {
 		{ to: '/search', icon: '/assets/icons/Search.ico', label: 'Search' },
 		{ to: '/shared', icon: '/assets/icons/SharedFiles.ico', label: 'Shared' },
 		{ to: '/categories', emoji: '🏷️', label: 'Categories' },
+		{ to: '/indexer-feed', emoji: '📡', label: 'Indexer Feed' },
 		{ to: '/extensions', emoji: '🧩', label: 'Extensions' },
 		{ to: '/settings', icon: '/assets/icons/Preferences.ico', label: 'Settings' },
 	];

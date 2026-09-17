@@ -23,6 +23,21 @@ export type {
 // IMediaProvider contract
 // ---------------------------------------------------------------------------
 
+/**
+ * What a search is looking for. Every provider handles `query`; the identifiers are hints for providers
+ * that can look a title up directly (a provider that ignores them just searches by text).
+ */
+export interface SearchCriteria {
+	query: string;
+	/** IMDb id of the wanted title ("tt0133093"), when the caller knows it (the *arr wanted sync does). */
+	imdbId?: string | null;
+	/**
+	 * eD2k network scope chosen in the UI dropdown: 'Global' (default), 'Local' or 'Kad', matched
+	 * case-insensitively by AmuleService. Only the aMule provider has a use for it.
+	 */
+	amuleSearchType?: string;
+}
+
 export interface IMediaProvider {
 	readonly providerId: string;
 
@@ -30,7 +45,7 @@ export interface IMediaProvider {
 	canHandleDownload(link: string): boolean;
 
 	/** Fire-and-forget search initiation. */
-	startSearch(query: string): Promise<void>;
+	startSearch(criteria: SearchCriteria): Promise<void>;
 
 	/** Return cached/latest search results for this provider. */
 	getSearchResults(): Promise<MediaSearchResult[]>;

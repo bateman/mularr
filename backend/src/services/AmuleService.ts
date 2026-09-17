@@ -479,7 +479,7 @@ export class AmuleService {
 	private lastSearchResults: any[] = [];
 
 	async startSearch(query: string, type: string = 'Global') {
-		this.logger.info(`Starting Search for: ${query}`);
+		this.logger.info(`Starting (${type}) Search for: ${query}`);
 
 		try {
 			// Convert string type to enum if possible, default to Global

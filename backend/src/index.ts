@@ -14,7 +14,8 @@ import { GluetunService } from './services/GluetunService';
 import { AmuledService } from './services/AmuledService';
 import { SystemService } from './services/SystemService';
 import { MularrMonitoringService } from './services/MularrMonitoringService';
-import { MediaProviderService } from './services/mediaprovider';
+import { MediaProviderService, MediaSearchService } from './services/mediaprovider';
+import { ArrSyncService } from './services/arrsync/ArrSyncService';
 import { ExtensionsService } from './services/ExtensionsService';
 import { SpeedHistoryService } from './services/SpeedHistoryService';
 import { WsBroadcastService } from './services/WsBroadcastService';
@@ -22,6 +23,7 @@ import { amuleRoutes } from './routes/amuleRoutes';
 import { systemRoutes } from './routes/systemRoutes';
 import { qbittorrentRoutes } from './routes/qbittorrentRoutes';
 import { indexerRoutes } from './routes/indexerRoutes';
+import { indexerFeedRoutes } from './routes/indexerFeedRoutes';
 import { extensionsRoutes } from './routes/extensionsRoutes';
 import { telegramRoutes } from './routes/telegramRoutes';
 import { mediaProviderRoutes } from './routes/mediaProviderRoutes';
@@ -123,6 +125,15 @@ async function main() {
 	const mediaProviderService = new MediaProviderService();
 	container.register(MediaProviderService, mediaProviderService);
 
+	// Initialize MediaSearch Service (one search at a time across the providers; UI, Torznab and the *arr sync go through it)
+	container.register(MediaSearchService, new MediaSearchService());
+
+	// Initialize *arr wanted sync (feeds the Torznab RSS from the Sonarr/Radarr wanted lists). Not started in
+	// mock mode: it reaches the configured Sonarr/Radarr instances over HTTP and there is nothing to reach.
+	const arrSyncService = new ArrSyncService();
+	container.register(ArrSyncService, arrSyncService);
+	if (!mockMode) arrSyncService.start();
+
 	// Initialize Speed History Service (records download/upload samples for the dashboard)
 	const speedHistoryService = mockMode ? new MockSpeedHistoryService() : new SpeedHistoryService();
 	container.register(SpeedHistoryService, speedHistoryService);
@@ -152,6 +163,7 @@ async function main() {
 	app.use('/api/as-qbittorrent/api/v2', qbittorrentRoutes()); // manages its own auth internally
 	app.use('/api/as-torznab-indexer', withAuth(indexerRoutes())); // Torznab indexer for Sonarr/Radarr/Lidarr
 	app.use('/api/blacklist', withAuth(blacklistRoutes()));
+	app.use('/api/indexer-feed', withAuth(indexerFeedRoutes())); // Web UI view of the feed and the *arr wanted sync
 
 	// -- Serve static files from the 'public' folder ------------------------------
 

@@ -1,15 +1,39 @@
 import { Request, Response } from 'express';
 import { container } from '../services/container/ServiceContainer';
 import { eD2kLinkToFakeMagnet, hashToFakeMagnet } from './qbittorrentMappings';
-import { MediaProviderService, MediaSearchResult } from '../services/mediaprovider';
+import { MediaSearchService, MediaSearchResult } from '../services/mediaprovider';
+import { MainDB, type IndexerFeedMediaType, type IndexerFeedRecord } from '../services/db/MainDB';
+import { expandApostrophes, filterByEpisode } from '../services/releaseNameTools';
 import { LoggerFactory } from '../services/logging/Logger';
+
+/** What renderRss needs from a release. pubDate defaults to now (live search results). */
+type RssItem = MediaSearchResult & { pubDate?: Date };
+
+function feedRecordToRssItem(r: IndexerFeedRecord): RssItem {
+	return {
+		name: r.name,
+		size: r.size,
+		hash: r.hash,
+		link: r.link ?? undefined,
+		sourceCount: r.source_count,
+		provider: r.provider,
+		pubDate: new Date(r.discovered_at),
+	};
+}
 
 /**
  * IndexerController provides a Torznab-compatible API for Sonarr, Radarr and Lidarr.
+ *
+ * Two kinds of request arrive here:
+ * - Searches (`q`, `imdbid`, `artist`/`album`): a live search on the providers.
+ * - RSS syncs, the same actions with no search terms, which the *arr send every few minutes to learn
+ *   about new releases. eD2k has no such feed, so it is served from the indexer_feed table filled by
+ *   the *arr wanted sync (see services/arrsync).
  */
 export class IndexerController {
 	private readonly logger = LoggerFactory.create(this);
-	private readonly mediaProviderService = container.get(MediaProviderService);
+	private readonly searchService = container.get(MediaSearchService);
+	private readonly db = container.get(MainDB);
 
 	handle = async (req: Request, res: Response) => {
 		const { t, q, season, ep, offset, limit, cat, imdbid, rid, director, year, artist, album } = req.query;
@@ -34,10 +58,21 @@ export class IndexerController {
 				musicQuery = parts.filter((p, i) => parts.findIndex((x) => x.toLowerCase() === p.toLowerCase()) === i).join(' ');
 			}
 
-			// With no search terms, return one fake item: the *arr
-			// connection Test fails hard on an empty feed.
+			// With no search terms this is an RSS sync (or the *arr connection Test): serve the feed built by
+			// the wanted sync. When it is empty, return one fake item: the Test fails hard on an empty feed.
 			if (!q && !imdbid && !musicQuery) {
-				this.logger.debug('No search terms provided (q/imdbid/artist/album) — returning one fake item for compatibility');
+				const start = parseInt(offset as string) || 0;
+				const size = parseInt(limit as string) || 100;
+				// tvsearch/movie map to one media type; a plain search gets everything; music has no feed
+				const mediaType: IndexerFeedMediaType | undefined = t === 'tvsearch' ? 'tv' : t === 'movie' ? 'movie' : undefined;
+				const total = t === 'music' ? 0 : this.db.countIndexerFeed({ mediaType });
+				if (total > 0) {
+					const items = this.db.getIndexerFeed({ mediaType }, start, size).map((r) => feedRecordToRssItem(r));
+					this.logger.info(`RSS sync (${t}): returning ${items.length} feed item(s) (offset: ${start}, limit: ${size}, total: ${total})`);
+					return this.renderRss(res, items, cat as string, total);
+				}
+
+				this.logger.debug('No search terms provided (q/imdbid/artist/album) and the feed is empty — returning one fake item for compatibility');
 				const fakeItem = [
 					{
 						name: 'Mularr Test Item',
@@ -83,43 +118,12 @@ export class IndexerController {
 
 			// Releases often drop apostrophes (e.g. "Widow's Bay" -> "Widows Bay").
 			// Done here so every search type benefits.
-			queryStr = this.expandApostrophes(queryStr);
+			queryStr = expandApostrophes(queryStr);
 
 			try {
-				await this.mediaProviderService.startSearch(queryStr);
+				const results = await this.searchService.searchAndCollect({ query: queryStr });
 
-				// Gather until the result set stops growing, not just until EC
-				// progress hits 100%. progress reaches 1 as soon as the first
-				// responses land, but a global eD2k search keeps trickling
-				// results for many seconds; returning early yields a small,
-				// non-deterministic snapshot (observed ~17 vs ~126) that drops
-				// long-tail releases. So poll the set and stop only once its
-				// size is stable across STABLE_POLLS polls AND the search
-				// reports done, or MAX_WAIT_MS elapses — favouring completeness
-				// over speed, within the *arr request timeout.
-				const POLL_MS = 1500;
-				const MAX_WAIT_MS = 12000;
-				const STABLE_POLLS = 3;
-				const startedAt = Date.now();
-				let lastCount = -1;
-				let stable = 0;
-				while (Date.now() - startedAt < MAX_WAIT_MS) {
-					await new Promise((r) => setTimeout(r, POLL_MS));
-					const status = await this.mediaProviderService.getSearchStatus();
-					const current = (await this.mediaProviderService.getSearchResults()).list.length;
-					if (current === lastCount) {
-						stable++;
-						if (status.progress >= 1 && stable >= STABLE_POLLS) break;
-					} else {
-						stable = 0;
-					}
-					lastCount = current;
-					this.logger.debug(`Search progress: ${Math.floor(status.progress * 100)}%, results so far: ${current}`);
-				}
-
-				const results = await this.mediaProviderService.getSearchResults();
-
-				let list = epFilter ? this.filterByEpisode(results.list, epFilter.season, epFilter.ep) : results.list;
+				let list = epFilter ? filterByEpisode(results, epFilter.season, epFilter.ep) : results;
 
 				// Apply offset and limit
 				const start = parseInt(offset as string) || 0;
@@ -137,27 +141,6 @@ export class IndexerController {
 
 		res.status(400).send('Unknown action');
 	};
-
-	private filterByEpisode(results: MediaSearchResult[], season: number, ep: number): MediaSearchResult[] {
-		// 0* absorbs zero-padding (S01E07 == S1E7); \s? allows a split SxxEyy.
-		const patterns = [/\bs0*(\d+)\s?e0*(\d+)\b/i, /\b0*(\d+)x0*(\d+)\b/i];
-		return results.filter((r) => {
-			// Normalize dot/underscore separators so word boundaries hold.
-			const name = r.name.replace(/[._]/g, ' ');
-			for (const pattern of patterns) {
-				const m = name.match(pattern);
-				if (m && parseInt(m[1], 10) === season && parseInt(m[2], 10) === ep) {
-					return true;
-				}
-			}
-			return false;
-		});
-	}
-
-	private expandApostrophes(query: string): string {
-		const stripped = query.replace(/['’]/g, '');
-		return stripped === query || stripped.trim() === '' ? query : `${query} OR ${stripped}`;
-	}
 
 	private getCapabilities(res: Response) {
 		res.header('Content-Type', 'application/xml');
@@ -198,12 +181,12 @@ export class IndexerController {
 		res.send(caps);
 	}
 
-	private renderRss(res: Response, results: MediaSearchResult[], requestedCat?: string) {
+	/** `total` is the size of the whole result set when `results` is one page of it (feed paging). */
+	private renderRss(res: Response, results: RssItem[], requestedCat?: string, total: number = results.length) {
 		res.header('Content-Type', 'application/xml');
 
 		const category = requestedCat || '2000';
 		const offset = res.req.query.offset || '0';
-		const total = results.length;
 
 		let itemsXml = '';
 		for (const item of results) {
@@ -217,7 +200,7 @@ export class IndexerController {
       <guid isPermaLink="false">${hash}</guid>
       <link>${downloadUrl}</link>
       <category>${category}</category>
-      <pubDate>${new Date().toUTCString()}</pubDate>
+      <pubDate>${(item.pubDate ?? new Date()).toUTCString()}</pubDate>
       <size>${item.size}</size>
       <enclosure url="${downloadUrl}" length="${item.size}" type="application/x-bittorrent" />
       <torznab:attr name="seeders" value="${item.sourceCount || 0}" />

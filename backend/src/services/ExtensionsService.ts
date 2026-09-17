@@ -1,6 +1,7 @@
 import { MainDB, Extension, ValidationResult } from '../services/db/MainDB';
 import { container } from './container/ServiceContainer';
 import { AppEvent, AppEvents, isAppEvent } from './AppEvents';
+import { createArrApiClient, isArrExtensionType, validateArrConfig } from './arrsync/ArrSyncService';
 import { LoggerFactory } from './logging/Logger';
 
 function isHttpUrl(value: string): boolean {
@@ -60,8 +61,32 @@ export class ExtensionsService {
 			if (!Array.isArray(events) || !events.every(isAppEvent)) {
 				throw new Error('Webhook config must contain an "events" array of valid event names');
 			}
+		} else if (isArrExtensionType(extension.type)) {
+			// Normalized so the stored config always carries a usable interval
+			config = { ...validateArrConfig(config) };
 		}
 		this.db.updateExtensionConfig(id, JSON.stringify(config));
+	}
+
+	/**
+	 * Checks that an extension's endpoint answers with the given settings, before or after saving them.
+	 * Only Sonarr/Radarr extensions support it: they must be the right app and accept the API key.
+	 * Resolves with a message for the user; rejects with the reason otherwise.
+	 */
+	async testConnection(type: string, url: string, config: Record<string, unknown>): Promise<string> {
+		if (!isArrExtensionType(type)) {
+			throw new Error('Connection test is not supported for this extension type');
+		}
+		if (!isHttpUrl(url.trim())) {
+			throw new Error('url must be a valid http(s) URL');
+		}
+		const { apiKey } = validateArrConfig(config);
+		const status = await createArrApiClient(type, url.trim(), apiKey).getSystemStatus();
+		const appName = (status.appName ?? '').toLowerCase();
+		if (appName && appName !== type) {
+			throw new Error(`The URL answers as ${status.appName}, not ${type}`);
+		}
+		return `Connected to ${status.appName ?? type}${status.version ? ` v${status.version}` : ''}`;
 	}
 
 	// Webhooks

@@ -1,0 +1,148 @@
+.indexer-feed-view {
+	height: 100%;
+
+	.sync-panel {
+		padding: 6px 8px;
+	}
+
+	.sync-panel-header {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		margin: 0 2px 6px 2px;
+	}
+
+	.sync-note {
+		font-size: 0.85em;
+		opacity: 0.8;
+	}
+
+	.sync-cards {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.sync-card {
+		flex: 1;
+		min-width: 260px;
+		max-width: 420px;
+		padding: 6px 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+
+	.sync-card-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.sync-card-name {
+		font-weight: bold;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.sync-card-type {
+		font-size: 0.85em;
+		opacity: 0.8;
+	}
+
+	.sync-badge {
+		font-size: 0.8em;
+		font-weight: bold;
+		padding: 0 5px;
+		border: 1px solid currentColor;
+		border-radius: 3px;
+		white-space: nowrap;
+	}
+
+	.sync-card-grid {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		column-gap: 10px;
+		row-gap: 2px;
+		font-size: 0.9em;
+	}
+
+	.sync-k {
+		opacity: 0.75;
+	}
+
+	.sync-v {
+		font-variant-numeric: tabular-nums;
+	}
+
+	.sync-card-error {
+		font-size: 0.85em;
+		color: #ff4d4d;
+		word-break: break-word;
+	}
+
+	.sync-empty {
+		font-style: italic;
+		font-size: 0.9em;
+		padding: 4px 2px;
+	}
+
+	.feed-footer {
+		padding: 4px 8px;
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 0.9em;
+	}
+}
+
+.indexer-feed-view {
+	.view-tabs {
+		display: flex;
+		gap: 2px;
+		margin-left: 12px;
+	}
+
+	.view-tab {
+		min-width: 70px;
+	}
+
+	.view-tab.active {
+		font-weight: bold;
+		text-decoration: underline;
+	}
+
+	.feed-filters {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+	}
+
+	.job-filter-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 0.85em;
+		padding: 1px 4px 1px 6px;
+		border: 1px solid currentColor;
+		border-radius: 3px;
+		max-width: 260px;
+	}
+
+	.job-filter-chip > span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.wanted-errors {
+		padding: 4px 8px;
+	}
+
+	.wanted-error {
+		font-size: 0.85em;
+		color: #ff4d4d;
+		word-break: break-word;
+	}
+}

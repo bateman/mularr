@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import type { IndexerFeedItem, IndexerFeedMediaType } from '../../types/IndexerFeedTypes';
 import { LoggerFactory } from '../logging/Logger';
 
 export interface DownloadDbRecord {
@@ -35,6 +36,19 @@ export interface BlacklistEntry {
 	size: number | null;
 	reason: string | null;
 	added_at: string;
+}
+
+/** A row of the indexer_feed table; same shape as the wire type. */
+export type IndexerFeedRecord = IndexerFeedItem;
+export type { IndexerFeedMediaType };
+
+/** Filters of the indexer feed listing. Without any, every item matches. */
+export interface IndexerFeedQuery {
+	mediaType?: IndexerFeedMediaType;
+	/** Case-insensitive substring of the release name. */
+	search?: string;
+	/** Only releases found for this wanted title (see IndexerFeedRecord.job_key). */
+	jobKey?: string;
 }
 
 /**
@@ -94,6 +108,21 @@ export class MainDB {
 				reason TEXT,
 				added_at DATETIME DEFAULT CURRENT_TIMESTAMP
 			);
+
+			CREATE TABLE IF NOT EXISTS indexer_feed (
+				hash TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				size INTEGER NOT NULL,
+				link TEXT,
+				provider TEXT NOT NULL DEFAULT 'amule',
+				source_count INTEGER NOT NULL DEFAULT 0,
+				media_type TEXT NOT NULL,
+				query TEXT,
+				imdb_id TEXT,
+				job_key TEXT,
+				discovered_at DATETIME NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_indexer_feed_discovered ON indexer_feed (media_type, discovered_at DESC);
 		`);
 
 		this.migrate();
@@ -119,6 +148,14 @@ export class MainDB {
 				this.db.prepare('ALTER TABLE blacklist ADD COLUMN size INTEGER').run();
 				// One-time normalization: hashes are matched case-insensitively from now on
 				this.db.prepare('UPDATE blacklist SET hash = LOWER(hash)').run();
+			}
+
+			// indexer_feed grew these columns while the feature was being developed
+			const feedTableInfo = this.db.prepare('PRAGMA table_info(indexer_feed)').all() as any[];
+			for (const column of ['imdb_id', 'job_key']) {
+				if (!feedTableInfo.some((col) => col.name === column)) {
+					this.db.prepare(`ALTER TABLE indexer_feed ADD COLUMN ${column} TEXT`).run();
+				}
 			}
 		} catch (e) {
 			this.logger.error('Migration error:', e);
@@ -273,5 +310,89 @@ export class MainDB {
 	public isBlacklisted(hash: string, size?: number | null): boolean {
 		const entry = this.getBlacklistEntry(hash);
 		return !!entry && blacklistEntryMatches(entry, size);
+	}
+
+	// ---------------------------------------------------------
+	// Indexer feed (releases found by the *arr wanted sync)
+	// ---------------------------------------------------------
+
+	/** Inserts new items and refreshes name/size/link/sources of known ones, keeping their discovered_at. */
+	public upsertIndexerFeedItems(items: Omit<IndexerFeedRecord, 'discovered_at'>[]): void {
+		if (items.length === 0) return;
+		const stmt = this.db.prepare(`
+			INSERT INTO indexer_feed (hash, name, size, link, provider, source_count, media_type, query, imdb_id, job_key, discovered_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(hash) DO UPDATE SET
+				name = excluded.name,
+				size = excluded.size,
+				link = excluded.link,
+				source_count = excluded.source_count,
+				query = excluded.query,
+				imdb_id = COALESCE(excluded.imdb_id, indexer_feed.imdb_id),
+				job_key = COALESCE(excluded.job_key, indexer_feed.job_key)
+		`);
+		const now = new Date().toISOString();
+		const insertAll = this.db.transaction((rows: Omit<IndexerFeedRecord, 'discovered_at'>[]) => {
+			for (const r of rows) {
+				stmt.run(r.hash.toLowerCase(), r.name, r.size, r.link, r.provider, r.source_count, r.media_type, r.query, r.imdb_id, r.job_key, now);
+			}
+		});
+		insertAll(items);
+	}
+
+	/** WHERE clause and its parameters for the given filters (empty clause when there are none). */
+	private indexerFeedWhere(query: IndexerFeedQuery): { where: string; params: (string | number)[] } {
+		const conditions: string[] = [];
+		const params: (string | number)[] = [];
+		if (query.mediaType) {
+			conditions.push('media_type = ?');
+			params.push(query.mediaType);
+		}
+		if (query.jobKey) {
+			conditions.push('job_key = ?');
+			params.push(query.jobKey);
+		}
+		const search = query.search?.trim();
+		if (search) {
+			conditions.push("name LIKE ? ESCAPE '\\'");
+			params.push(`%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+		}
+		return { where: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '', params };
+	}
+
+	/** Newest first. */
+	public getIndexerFeed(query: IndexerFeedQuery, offset: number, limit: number): IndexerFeedRecord[] {
+		const { where, params } = this.indexerFeedWhere(query);
+		return this.db
+			.prepare<(string | number)[], IndexerFeedRecord>(`SELECT * FROM indexer_feed ${where} ORDER BY discovered_at DESC, hash LIMIT ? OFFSET ?`)
+			.all(...params, limit, offset);
+	}
+
+	public countIndexerFeed(query: IndexerFeedQuery = {}): number {
+		const { where, params } = this.indexerFeedWhere(query);
+		const row = this.db.prepare<(string | number)[], { n: number }>(`SELECT COUNT(*) AS n FROM indexer_feed ${where}`).get(...params);
+		return row?.n ?? 0;
+	}
+
+	/** Number of feed items per wanted title (job_key); rows without one are not counted. */
+	public countIndexerFeedByJobKey(): Map<string, number> {
+		const rows = this.db
+			.prepare<[], { job_key: string; n: number }>('SELECT job_key, COUNT(*) AS n FROM indexer_feed WHERE job_key IS NOT NULL GROUP BY job_key')
+			.all();
+		return new Map(rows.map((r) => [r.job_key, r.n]));
+	}
+
+	public deleteIndexerFeedItem(hash: string): boolean {
+		return this.db.prepare('DELETE FROM indexer_feed WHERE hash = ?').run(hash.toLowerCase()).changes > 0;
+	}
+
+	/** Empties the feed. Returns how many items were removed. */
+	public clearIndexerFeed(): number {
+		return this.db.prepare('DELETE FROM indexer_feed').run().changes;
+	}
+
+	/** Removes items first discovered before the given instant. Returns how many were removed. */
+	public pruneIndexerFeed(olderThan: Date): number {
+		return this.db.prepare('DELETE FROM indexer_feed WHERE discovered_at < ?').run(olderThan.toISOString()).changes;
 	}
 }

@@ -109,6 +109,12 @@ To configure as download client use the following settings:
 - **Type**: qBittorrent
 - **URL Base**: `/api/as-qbittorrent`
 
+### Automatic downloads (RSS sync)
+
+Sonarr/Radarr discover new episodes and releases through the indexer's RSS feed, which they poll every few minutes. eD2k has no such feed, so Mularr builds one from their **Wanted > Missing** lists.
+
+In **Extensions**, add a **Sonarr** or **Radarr** extension with the instance URL and API key. Mularr will periodically search the providers for the missing titles and publish the matches in its Torznab feed, where Sonarr/Radarr grab them on their next RSS sync. The interval is configurable per instance (default 60 minutes).
+
 ## Tech Stack
 
 Mularr is built primarily with TypeScript.

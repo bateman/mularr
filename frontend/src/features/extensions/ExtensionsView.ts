@@ -1,10 +1,11 @@
 import { inject, component, signal } from 'chispa';
-import { ExtensionsApiService, Extension, EXTENSION_TYPES } from '../../services/ExtensionsApiService';
+import { ExtensionsApiService, Extension, EXTENSION_TYPES, isArrExtensionType } from '../../services/ExtensionsApiService';
 import { DialogService } from '../../services/DialogService';
 import { ApiError } from '../../services/BaseApiService';
 import { TelegramConfig } from './components/TelegramConfig';
 import { WebhookConfig } from './components/WebhookConfig';
 import { ExtensionUrlConfig } from './components/ExtensionUrlConfig';
+import { ArrConfig } from './components/ArrConfig';
 import { AddExtensionForm } from './components/AddExtensionForm';
 import tpl from './ExtensionsView.html';
 import './ExtensionsView.css';
@@ -60,10 +61,11 @@ export const ExtensionsView = component(() => {
 							const res = await api.addExtension(v);
 							await refresh();
 							close();
-							// A webhook does nothing until events are selected — open its config right away
-							if (v.type === 'webhook' && res?.id != null) {
+							// A webhook does nothing until events are selected, and Sonarr/Radarr need an API key —
+							// open their config right away
+							if ((v.type === 'webhook' || isArrExtensionType(v.type)) && res?.id != null) {
 								const created = extensions.get().find((x) => x.id === res.id);
-								if (created) openWebhookDialog(created);
+								if (created) openConfigDialog(created);
 							}
 						} catch (e) {
 							console.error(e);
@@ -116,6 +118,29 @@ export const ExtensionsView = component(() => {
 		});
 	};
 
+	const openArrDialog = (ext: Extension) => {
+		dialogService.open({
+			title: `${EXTENSION_TYPES[ext.type]?.label ?? ext.type}: ${ext.name}`,
+			width: '520px',
+			render: (close) =>
+				ArrConfig({
+					extension: ext,
+					onSave: async ({ url, config }) => {
+						try {
+							if (!(await saveUrl(ext, url))) return;
+							await api.updateExtensionConfig(ext.id, config);
+							refresh();
+							close();
+						} catch (e) {
+							console.error(e);
+							await dialogService.alert(e instanceof ApiError ? e.message : 'Failed to save configuration', 'Error');
+						}
+					},
+					onCancel: close,
+				}),
+		});
+	};
+
 	const openUrlDialog = (ext: Extension) => {
 		dialogService.open({
 			title: `${EXTENSION_TYPES[ext.type]?.label ?? ext.type}: ${ext.name}`,
@@ -141,6 +166,7 @@ export const ExtensionsView = component(() => {
 	const openConfigDialog = (ext: Extension) => {
 		if (ext.type === 'telegram_indexer') openTelegramDialog();
 		else if (ext.type === 'webhook') openWebhookDialog(ext);
+		else if (isArrExtensionType(ext.type)) openArrDialog(ext);
 		else if (EXTENSION_TYPES[ext.type]?.requiresUrl) openUrlDialog(ext);
 	};
 

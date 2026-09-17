@@ -1,0 +1,194 @@
+<div class="indexer-feed-view ui-feature-layout-rows">
+	<div class="ui-panel-raised ui-feature-topbar">
+		<span style="font-weight: bold; margin-left: 5px">Indexer Feed</span>
+		<div class="view-tabs">
+			<button class="ui-btn view-tab" data-cb="tabWanted">Wanted</button>
+			<button class="ui-btn view-tab" data-cb="tabFeed">Feed</button>
+		</div>
+		<div style="flex: 1"></div>
+		<div data-cb="feedFilters" class="feed-filters">
+			<span data-cb="jobFilterChip" class="job-filter-chip">
+				<span data-cb="jobFilterLabel"></span>
+				<button class="ui-btn" data-cb="jobFilterClear" title="Show every release"
+					style="min-width: 18px; height: 18px; padding: 0 4px">×</button>
+			</span>
+			<div class="ui-inline-input-block">
+				<label>Type:</label>
+				<select data-cb="typeSelect">
+					<option value="">All</option>
+					<option value="tv">TV</option>
+					<option value="movie">Movies</option>
+				</select>
+			</div>
+			<input data-cb="searchInput" type="text" placeholder="Filter by name..." style="width: 180px" />
+		</div>
+		<button class="ui-btn" data-cb="btnRefresh">Refresh</button>
+		<button class="ui-btn" data-cb="btnClear">Clear Feed</button>
+	</div>
+
+	<!-- Wanted sync status, one card per Sonarr/Radarr extension -->
+	<div class="ui-panel-raised sync-panel">
+		<div class="sync-panel-header">
+			<span style="font-weight: bold">Wanted sync</span>
+			<span data-cb="postponedNote" class="sync-note"></span>
+		</div>
+		<div class="sync-cards" data-cb="syncCards">
+			<div data-cb="syncCard" class="ui-panel-sunken sync-card">
+				<div class="sync-card-header">
+					<span data-cb="cardName" class="sync-card-name"></span>
+					<span data-cb="cardType" class="sync-card-type"></span>
+					<span data-cb="cardBadge" class="sync-badge"></span>
+					<div style="flex: 1"></div>
+					<button class="ui-btn" data-cb="cardRunBtn" style="height: 20px; padding: 0 6px">Sync now</button>
+				</div>
+				<div class="sync-card-grid">
+					<span class="sync-k">Last run</span>
+					<span data-cb="cardLastRun" class="sync-v"></span>
+					<span class="sync-k">Next run</span>
+					<span data-cb="cardNextRun" class="sync-v"></span>
+					<span class="sync-k">Wanted / searched / found</span>
+					<span data-cb="cardCounts" class="sync-v"></span>
+				</div>
+				<div data-cb="cardError" class="sync-card-error"></div>
+			</div>
+			<div data-cb="syncEmpty" class="sync-empty">
+				No Sonarr/Radarr extensions configured. Add one in <b>Extensions</b> and Mularr will fill this feed from
+				its wanted list.
+			</div>
+		</div>
+	</div>
+
+	<!-- Wanted tab: what the instances are waiting for, read live -->
+	<div data-cb="wantedPane" class="ui-table-container" style="flex: 1">
+		<div data-cb="wantedErrors" class="wanted-errors">
+			<div data-cb="wantedError" class="wanted-error"></div>
+		</div>
+		<table class="ui-list">
+			<thead>
+				<tr>
+					<th class="is-mobile-primary">Title</th>
+					<th style="width: 120px">Instance</th>
+					<th style="width: 55px">Type</th>
+					<th>Pending</th>
+					<th style="width: 180px">Query</th>
+					<th style="width: 90px">IMDb</th>
+					<th style="width: 130px">Last searched</th>
+					<th style="width: 70px; text-align: right">In feed</th>
+				</tr>
+			</thead>
+			<tbody data-cb="wantedBody">
+				<tr data-cb="wantedRow">
+					<td data-cb="wTitleCol" class="is-mobile-primary">
+						<span data-cb="wTitle"></span>
+						<div class="mobile-info-block" data-cb="wMobileInfo">
+							<div class="mobile-info-row" style="gap: 10px">
+								<span data-cb="wMobInstance"></span>
+								<span data-cb="wMobPending"
+									style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap"></span>
+							</div>
+							<div class="mobile-info-row" style="margin-top: 5px; gap: 10px">
+								<span data-cb="wMobSearched"></span>
+								<div style="flex: 1"></div>
+								<button class="ui-btn" style="height: 20px; padding: 0 6px"
+									data-cb="wMobHitsBtn"></button>
+							</div>
+						</div>
+					</td>
+					<td data-cb="wInstanceCol" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+					</td>
+					<td data-cb="wTypeCol"></td>
+					<td data-cb="wPendingCol"
+						style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px"></td>
+					<td data-cb="wQueryCol"
+						style="font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px">
+					</td>
+					<td data-cb="wImdbCol" style="font-family: monospace"></td>
+					<td data-cb="wSearchedCol"></td>
+					<td style="text-align: right">
+						<button class="ui-btn" style="min-width: 40px; height: 20px; padding: 0 6px" data-cb="wHitsBtn"
+							title="Show these releases in the feed"></button>
+					</td>
+				</tr>
+				<tr data-cb="wantedNoRows">
+					<td colspan="8" style="text-align: center; padding: 10px; font-style: italic"
+						data-cb="wantedNoRowsText">Loading...</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<!-- Feed tab: what the Torznab endpoint serves -->
+	<div data-cb="feedPane" class="ui-table-container" style="flex: 1">
+		<table class="ui-list">
+			<thead>
+				<tr>
+					<th class="is-mobile-primary">Name</th>
+					<th style="width: 55px">Type</th>
+					<th style="width: 75px">Size</th>
+					<th style="width: 60px">Sources</th>
+					<th style="width: 70px">Provider</th>
+					<th style="width: 160px">Query</th>
+					<th style="width: 90px">IMDb</th>
+					<th style="width: 140px">Discovered</th>
+					<th style="width: 110px; text-align: center">Actions</th>
+				</tr>
+			</thead>
+			<tbody data-cb="feedBody">
+				<tr data-cb="feedRow">
+					<td data-cb="nameCol" class="is-mobile-primary">
+						<span data-cb="nameText"></span>
+						<div class="mobile-info-block" data-cb="mobileInfo">
+							<div class="mobile-info-row" style="gap: 10px">
+								<span data-cb="mobType"></span>
+								<span data-cb="mobSize"></span>
+								<span data-cb="mobSources"></span>
+								<span data-cb="mobDiscovered"></span>
+							</div>
+							<div class="mobile-info-row" style="margin-top: 5px; gap: 10px">
+								<span data-cb="mobQuery"
+									style="font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap"></span>
+								<div style="flex: 1"></div>
+								<button class="ui-btn" style="min-width: 40px; height: 20px; padding: 0 5px"
+									data-cb="mobBlacklistBtn">Blacklist</button>
+								<button class="ui-btn" style="min-width: 24px; width: 24px; height: 20px; padding: 0"
+									data-cb="mobDeleteBtn">
+									<span class="icon-img icon-delete"></span>
+								</button>
+							</div>
+						</div>
+					</td>
+					<td data-cb="typeCol"></td>
+					<td data-cb="sizeCol"></td>
+					<td data-cb="sourcesCol" style="text-align: right"></td>
+					<td data-cb="providerCol"></td>
+					<td data-cb="queryCol"
+						style="font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px">
+					</td>
+					<td data-cb="imdbCol" style="font-family: monospace"></td>
+					<td data-cb="discoveredCol"></td>
+					<td style="text-align: right">
+						<button class="ui-btn" style="min-width: 40px; height: 20px; padding: 0 5px"
+							data-cb="blacklistBtn" title="Blacklist this hash and remove it from the feed">
+							Blacklist
+						</button>
+						<button class="ui-btn" style="min-width: 24px; width: 24px; height: 20px; padding: 0"
+							data-cb="deleteBtn" title="Remove from feed">
+							<span class="icon-img icon-delete"></span>
+						</button>
+					</td>
+				</tr>
+				<tr data-cb="noItemsRow">
+					<td colspan="9" style="text-align: center; padding: 10px; font-style: italic" data-cb="noItemsText">
+						The feed is empty.</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<div data-cb="feedFooter" class="ui-panel-raised feed-footer">
+		<span data-cb="pageInfo"></span>
+		<div style="flex: 1"></div>
+		<button class="ui-btn" data-cb="btnPrev">Prev</button>
+		<button class="ui-btn" data-cb="btnNext">Next</button>
+	</div>
+</div>

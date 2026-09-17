@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { container } from '../services/container/ServiceContainer';
-import { MediaProviderService } from '../services/mediaprovider';
+import { MediaProviderService, MediaSearchService } from '../services/mediaprovider';
 
 export class MediaProviderController {
 	private readonly service = container.get(MediaProviderService);
+	private readonly searchService = container.get(MediaSearchService);
 
 	getTransfers = async (req: Request, res: Response) => {
 		try {
@@ -27,7 +28,8 @@ export class MediaProviderController {
 	startSearch = async (req: Request, res: Response) => {
 		try {
 			const { query, type } = req.body;
-			await this.service.startSearch(query, type);
+			// Interactive: the UI polls the results, so background searches must hold off for a while
+			await this.searchService.startSearch({ query, amuleSearchType: type }, true);
 			res.json({ success: true });
 		} catch (e: any) {
 			res.status(500).json({ error: e.message });
@@ -36,7 +38,7 @@ export class MediaProviderController {
 
 	getSearchResults = async (req: Request, res: Response) => {
 		try {
-			const data = await this.service.getSearchResults();
+			const data = await this.searchService.getSearchResults();
 			res.json(data);
 		} catch (e: any) {
 			res.status(500).json({ error: e.message });
@@ -45,7 +47,7 @@ export class MediaProviderController {
 
 	getSearchStatus = async (req: Request, res: Response) => {
 		try {
-			const data = await this.service.getSearchStatus();
+			const data = await this.searchService.getSearchStatus();
 			res.json(data);
 		} catch (e: any) {
 			res.status(500).json({ error: e.message });
