@@ -2,10 +2,12 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import jwt from 'jsonwebtoken';
+import type { IncomingMessage } from 'http';
 import { Response } from 'express';
 import { __APP_CONFIG__ } from '../app-env';
 import type { AuthStatus } from '../types/AuthTypes';
 import { LoggerFactory } from './logging/Logger';
+import { isLocalRequest } from '../middleware/localAddress';
 
 // Wire contract shared with the frontend (see src/types/AuthTypes.ts), re-exported for backend consumers
 export type { AuthStatus };
@@ -23,6 +25,7 @@ export class AuthService {
 	private readonly username = __APP_CONFIG__.auth.username;
 	private readonly password = __APP_CONFIG__.auth.password;
 	private readonly apiKey = __APP_CONFIG__.auth.apiKey;
+	private readonly required = __APP_CONFIG__.auth.required;
 	private readonly jwtSecret: string;
 
 	constructor(dataDir: string) {
@@ -33,6 +36,11 @@ export class AuthService {
 		// the login UI. Warn so it isn't mistaken for an enabled login.
 		if (!!this.username !== !!this.password) {
 			this.logger.warn('Only one of AUTH_USERNAME/AUTH_PASSWORD is set — interactive login stays DISABLED. Set both to enable it.');
+		}
+		if (this.required === 'disabled_for_local_addresses' && !this.isInteractiveLoginEnabled()) {
+			this.logger.warn(
+				'AUTH_REQUIRED=disabled_for_local_addresses has no effect: interactive login is disabled, so the web UI is already open to everyone.'
+			);
 		}
 	}
 
@@ -84,6 +92,21 @@ export class AuthService {
 		return !!(this.username && this.password);
 	}
 
+	/**
+	 * AUTH_REQUIRED=disabled_for_local_addresses: the interactive gate (web UI routes + WebSocket) is waived
+	 * for clients on a local address, like the *Arr apps' "Disabled for Local Addresses". The M2M surfaces
+	 * (Torznab, qBittorrent) are not affected: API_KEY stays enforced there whatever the client address.
+	 */
+	isLocalBypassEnabled(): boolean {
+		return this.isInteractiveLoginEnabled() && this.required === 'disabled_for_local_addresses';
+	}
+
+	/** Whether the interactive gate applies to this request: login is enabled and the local-address bypass doesn't cover it. */
+	isLoginRequiredFor(req: IncomingMessage): boolean {
+		if (!this.isInteractiveLoginEnabled()) return false;
+		return !(this.isLocalBypassEnabled() && isLocalRequest(req));
+	}
+
 	/** API_KEY (machine-to-machine) auth on the /api/as-* surfaces. */
 	isApiKeyAuthEnabled(): boolean {
 		return !!this.apiKey;
@@ -98,12 +121,15 @@ export class AuthService {
 		return this.isApiKeyAuthEnabled() || this.isInteractiveLoginEnabled();
 	}
 
-	getStatus(): AuthStatus {
+	/** Status as seen by the requesting client: whether it must log in depends on its address when the local bypass is on. */
+	getStatus(req: IncomingMessage): AuthStatus {
 		return {
 			enabled: this.isAuthEnabled(),
 			hasCredentials: !!(this.username && this.password),
 			hasApiKey: !!this.apiKey,
 			interactiveLoginEnabled: this.isInteractiveLoginEnabled(),
+			loginRequired: this.isLoginRequiredFor(req),
+			localBypassEnabled: this.isLocalBypassEnabled(),
 		};
 	}
 

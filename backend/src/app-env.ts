@@ -18,6 +18,10 @@ export const __APP_MANIFEST__ = JSON.parse(readFileSync(path.join(__dirname, '..
 export const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
+/** Values of AUTH_REQUIRED, named after the *Arr apps' "Authentication Required" setting. */
+export const AUTH_REQUIRED_MODES = ['enabled', 'disabled_for_local_addresses'] as const;
+export type AuthRequiredMode = (typeof AUTH_REQUIRED_MODES)[number];
+
 export interface AppConfig {
 	/**
 	 * Serve generated data instead of talking to aMule, Gluetun, Telegram or the public IP lookups (see
@@ -37,6 +41,8 @@ export interface AppConfig {
 		apiKey?: string;
 		/** Signing secret; when unset one is generated and persisted next to the database. */
 		jwtSecret?: string;
+		/** 'disabled_for_local_addresses' lets LAN clients into the web UI without the login page; see middleware/localAddress.ts. */
+		required: AuthRequiredMode;
 	};
 	/** Telegram bot notifications; undefined when TELEGRAM_BOT_TOKEN is not set. */
 	telegramBot?: {
@@ -139,6 +145,7 @@ function loadConfig(): AppConfig {
 			password: envString('AUTH_PASSWORD'),
 			apiKey: envString('API_KEY'),
 			jwtSecret: envString('JWT_SECRET'),
+			required: envEnum('AUTH_REQUIRED', AUTH_REQUIRED_MODES, 'enabled'),
 		},
 		telegramBot: telegramBotToken ? { token: telegramBotToken, chatId: envString('TELEGRAM_CHAT_ID'), topicId: envInt('TELEGRAM_TOPIC_ID') } : undefined,
 		gluetun: {

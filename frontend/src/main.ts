@@ -17,17 +17,19 @@ const mountApp = () => {
 
 (async () => {
 	const authService = inject(AuthApiService);
-	let status = { enabled: false, hasCredentials: false, hasApiKey: false, interactiveLoginEnabled: false };
+	let loginRequired = false;
 	try {
-		status = await authService.getStatus();
+		loginRequired = (await authService.getStatus()).loginRequired;
 	} catch {
 		// If we can't reach the backend, proceed and let the app handle errors
 	}
 
-	// Show the login page only when interactive login is enabled (both
-	// AUTH_USERNAME and AUTH_PASSWORD set). When disabled, the UI is served
-	// openly — mularr expects to sit behind a trusted authenticating proxy.
-	if (status.interactiveLoginEnabled && !authService.isLoggedIn()) {
+	// Show the login page only when the backend says this client needs it:
+	// interactive login is enabled (both AUTH_USERNAME and AUTH_PASSWORD set) and
+	// AUTH_REQUIRED=disabled_for_local_addresses doesn't exempt our address.
+	// Otherwise the UI is served openly — either mularr sits behind a trusted
+	// authenticating proxy, or we're on the LAN.
+	if (loginRequired && !authService.isLoggedIn()) {
 		mountRoot(LoginView({ onLogin: mountApp }), document.body);
 	} else {
 		mountApp();

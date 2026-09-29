@@ -122,6 +122,7 @@ qBittorrent-compatible client. The two are controlled independently:
 | `AUTH_USERNAME` | Username for the web UI login page. Interactive login is enabled **only when both `AUTH_USERNAME` and `AUTH_PASSWORD` are set** (non-empty).                              |
 | `AUTH_PASSWORD` | Password for the web UI login page. Also accepted as the qBittorrent API password.                                                                                       |
 | `API_KEY`       | Machine-to-machine key for `/api/as-torznab-indexer*` and `/api/as-qbittorrent*`. Enforced whenever it is set, independently of interactive login. Also usable as the qBittorrent API password (with any username). |
+| `AUTH_REQUIRED` | `enabled` (default) or `disabled_for_local_addresses`: skip the web UI login page for clients on a local address, like the *Arr apps. See [Skipping the login on the local network](#skipping-the-login-on-the-local-network). |
 | `JWT_SECRET`    | Secret used to sign session JWTs. If unset, a random secret is generated on startup (existing sessions are invalidated on restart).                                      |
 
 ### Behavior matrix
@@ -151,6 +152,36 @@ reverse proxy / SSO (e.g. Traefik + Authelia) without a double login — while
 > port is **NOT published to any host** and all access is forced through a
 > trusted authenticating reverse proxy. Do not expose the port directly to a
 > network when interactive login is disabled.
+
+### Skipping the login on the local network
+
+With interactive login enabled, `AUTH_REQUIRED=disabled_for_local_addresses`
+lets clients on a **local address** into the web UI without the login page,
+like the *Arr apps' "Authentication Required: Disabled for Local Addresses".
+Remote users still get the login page, so it keeps protecting whatever reaches
+Mularr from outside, even when it is already behind an SSO such as Authelia.
+
+Local addresses are loopback (`127.0.0.0/8`, `::1`), the private ranges
+`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, link-local
+(`169.254.0.0/16`, `fe80::/10`) and IPv6 unique-local (`fc00::/7`). CGNAT
+(`100.64.0.0/10`, also used by Tailscale) is **not** local.
+
+Behind a reverse proxy, the proxy's own address is local, so a request counts
+as local only when every address in `X-Forwarded-For` and `X-Real-IP` is local
+too. These headers are only honoured when the direct peer is local, so a remote
+client cannot forge them. Traefik, Caddy and nginx (with the usual
+`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`) all set them.
+
+The bypass only covers the web UI and its WebSocket: the Torznab and
+qBittorrent endpoints (`/api/as-*`) keep requiring `API_KEY` or a session.
+
+> [!WARNING]
+> The decision relies on the source address Mularr sees. If Docker's userland
+> proxy (or any NAT) rewrites it, e.g. every connection shows up as coming from
+> the Docker gateway `172.17.0.1`, **every client counts as local**, including
+> those from the internet. Before enabling this, check the address reported by
+> the `Client connected from ...` log line when you open the UI from outside
+> your network.
 
 ---
 

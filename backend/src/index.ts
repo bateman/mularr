@@ -76,6 +76,9 @@ if (authService.isInteractiveLoginEnabled()) {
 } else {
 	logger.info('Interactive login DISABLED (AUTH_USERNAME/AUTH_PASSWORD not set) — serve only behind a trusted authenticating reverse proxy.');
 }
+if (authService.isLocalBypassEnabled()) {
+	logger.info('Login page SKIPPED for local addresses (AUTH_REQUIRED=disabled_for_local_addresses).');
+}
 logger.info(`API_KEY auth on /api/as-* is ${authService.isApiKeyAuthEnabled() ? 'ENABLED' : 'DISABLED'}.`);
 
 async function main() {

@@ -5,8 +5,8 @@ import { AuthService } from '../services/AuthService';
 export class AuthController {
 	private readonly authService = container.get(AuthService);
 
-	getStatus = (_req: Request, res: Response) => {
-		res.json(this.authService.getStatus());
+	getStatus = (req: Request, res: Response) => {
+		res.json(this.authService.getStatus(req));
 	};
 
 	login = (req: Request, res: Response) => {

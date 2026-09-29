@@ -27,7 +27,8 @@ export interface AuthOptions {
 	// Which auth posture decides whether this check enforces anything:
 	//   'api'         → enforce when any app credential is set (isAuthEnabled).
 	//                   Used for the M2M surfaces (qBit + Torznab).
-	//   'interactive' → enforce only when interactive login is enabled.
+	//   'interactive' → enforce only when interactive login is enabled, and the
+	//                   client isn't exempted by AUTH_REQUIRED=disabled_for_local_addresses.
 	//                   Used for the web-UI routes and the WebSocket, so they are
 	//                   served openly (behind a trusted proxy) when
 	//                   AUTH_USERNAME/PASSWORD are unset, even if API_KEY is configured.
@@ -79,7 +80,8 @@ export function authenticateRequest(req: IncomingMessage, opts: AuthOptions = {}
 	const scope = opts.scope ?? 'api';
 	const authService = container.get(AuthService);
 
-	const active = scope === 'interactive' ? authService.isInteractiveLoginEnabled() : authService.isAuthEnabled();
+	// The interactive gate also stands down for local clients when AUTH_REQUIRED=disabled_for_local_addresses
+	const active = scope === 'interactive' ? authService.isLoginRequiredFor(req) : authService.isAuthEnabled();
 	if (!active) {
 		return { authorized: true };
 	}
