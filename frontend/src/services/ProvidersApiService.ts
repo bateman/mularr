@@ -15,6 +15,11 @@ const providersMeta: Record<string, ProviderMeta> = {
 		icon: '📩',
 		iconClass: 'icon-telegram',
 	},
+	hispashare: {
+		name: 'Hispashare',
+		icon: '🎬',
+		iconClass: 'icon-hispashare',
+	},
 };
 
 export function getProviderName(provider?: string) {

@@ -40,7 +40,7 @@ export class MediaSearchService {
 	 */
 	async startSearch(criteria: SearchCriteria, interactive = false): Promise<void> {
 		if (interactive) this._lastInteractiveSearchAt = Date.now();
-		await Promise.allSettled(this.providers.map((p) => p.startSearch(criteria)));
+		await Promise.allSettled(this.providers.map((p) => p.startSearch({ ...criteria, interactive })));
 		this.searchHistory.addEntry(criteria.query, criteria.query);
 		this.events.emit('search.started', { query: criteria.query });
 	}

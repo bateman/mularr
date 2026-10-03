@@ -9,6 +9,7 @@ import { AppEvents, toDownloadEventPayload } from '../AppEvents';
 import { parseEd2kLink } from '../eD2kTools';
 import { AmuleMediaProvider } from './adapters/AmuleMediaProvider';
 import { TelegramMediaProvider } from './adapters/TelegramMediaProvider';
+import { HispashareMediaProvider } from './adapters/HispashareMediaProvider';
 import type { MediaCategory, IMediaProvider, MediaTransfer, MediaTransfersResponse } from './types';
 import { LoggerFactory } from '../logging/Logger';
 
@@ -34,6 +35,8 @@ export class MediaProviderService {
 	constructor() {
 		// Order matters: first matching provider wins for canHandleDownload
 		this.providers.push(new TelegramMediaProvider());
+		// Search-only (its files are downloaded by aMule) and reaches the internet, so it is left out in mock mode
+		if (!__APP_CONFIG__.mockMode) this.providers.push(new HispashareMediaProvider());
 		this.providers.push(new AmuleMediaProvider());
 	}
 

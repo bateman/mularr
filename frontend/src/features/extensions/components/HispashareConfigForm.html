@@ -1,0 +1,18 @@
+<div>
+	<p style="margin: 0 0 12px 0; font-size: 0.9em">
+		Adds the <a href="https://www.hispashare.org/" target="_blank" rel="noopener">Hispashare</a> catalogue as a search provider. Its releases are eD2k
+		files, downloaded by aMule. The API allows <b>250 requests per hour</b>: identical searches are cached for 15 minutes and background searches
+		(Sonarr/Radarr sync) stop when fewer than 30 requests are left. The Test button validates the token and costs one request.
+	</p>
+
+	<div class="form-group" style="margin-bottom: 10px">
+		<label style="display: block; margin-bottom: 3px">API URL:</label>
+		<input data-cb="urlInput" type="url" style="width: 100%; font-family: monospace" />
+	</div>
+	<div class="form-group" style="margin-bottom: 4px">
+		<label style="display: block; margin-bottom: 3px">
+			Token (<a href="https://www.hispashare.org/token/" target="_blank" rel="noopener">hispashare.org/token</a>, while signed in):
+		</label>
+		<input data-cb="tokenInput" type="password" autocomplete="off" style="width: 100%; font-family: monospace" />
+	</div>
+</div>

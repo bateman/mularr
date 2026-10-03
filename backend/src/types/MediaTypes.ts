@@ -105,6 +105,10 @@ export interface MediaSearchResult {
 	provider: string;
 	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
 	sourceName?: string;
+	/** Page of the release on the provider's website, when it has one (e.g. the Hispashare title page). */
+	webUrl?: string;
+	/** IMDb id of the title the release belongs to, when the provider knows it. */
+	imdbId?: string;
 }
 
 export interface MediaSearchResponse {

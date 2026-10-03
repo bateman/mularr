@@ -1,6 +1,6 @@
 import { BaseApiService } from './BaseApiService';
 
-export type ExtensionType = /*'validator' | 'enhanced_search' |*/ 'webhook' | 'telegram_indexer' | 'media_previewer' | 'sonarr' | 'radarr';
+export type ExtensionType = /*'validator' | 'enhanced_search' |*/ 'webhook' | 'telegram_indexer' | 'media_previewer' | 'sonarr' | 'radarr' | 'hispashare';
 
 export interface Extension {
 	id: number;
@@ -19,7 +19,25 @@ export const EXTENSION_TYPES: Record<ExtensionType, { label: string; requiresUrl
 	media_previewer: { label: 'Media Previewer', requiresUrl: true },
 	sonarr: { label: 'Sonarr', requiresUrl: true },
 	radarr: { label: 'Radarr', requiresUrl: true },
+	hispashare: { label: 'Hispashare', requiresUrl: true },
 };
+
+/** Must match HISPASHARE_DEFAULT_API_URL in backend/src/services/hispashare/HispashareApiClient.ts. */
+export const HISPASHARE_DEFAULT_API_URL = 'https://api.hispashare.org';
+
+/** Settings of the hispashare extension, stored as { token } in its config. */
+export interface HispashareExtensionConfig {
+	token: string;
+}
+
+export function parseHispashareConfig(config?: string): HispashareExtensionConfig {
+	try {
+		const parsed = JSON.parse(config || '{}');
+		return { token: typeof parsed.token === 'string' ? parsed.token : '' };
+	} catch {
+		return { token: '' };
+	}
+}
 
 /** Extension types that sync a *arr wanted list into the Torznab RSS feed. */
 export const ARR_EXTENSION_TYPES: readonly ExtensionType[] = ['sonarr', 'radarr'];

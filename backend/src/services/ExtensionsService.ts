@@ -2,6 +2,7 @@ import { MainDB, Extension, ValidationResult } from '../services/db/MainDB';
 import { container } from './container/ServiceContainer';
 import { AppEvent, AppEvents, isAppEvent } from './AppEvents';
 import { createArrApiClient, isArrExtensionType, validateArrConfig } from './arrsync/ArrSyncService';
+import { HispashareApiClient, validateHispashareConfig } from './hispashare/HispashareApiClient';
 import { LoggerFactory } from './logging/Logger';
 
 function isHttpUrl(value: string): boolean {
@@ -78,6 +79,7 @@ export class ExtensionsService {
 		}
 		// Normalized so the stored config always carries usable values (e.g. the default sync interval)
 		if (isArrExtensionType(type)) return { ...validateArrConfig(config) };
+		if (type === 'hispashare') return { ...validateHispashareConfig(config) };
 		return config;
 	}
 
@@ -87,11 +89,17 @@ export class ExtensionsService {
 	 * Resolves with a message for the user; rejects with the reason otherwise.
 	 */
 	async testConnection(type: string, url: string, config: Record<string, unknown>): Promise<string> {
-		if (!isArrExtensionType(type)) {
-			throw new Error('Connection test is not supported for this extension type');
-		}
 		if (!isHttpUrl(url.trim())) {
 			throw new Error('url must be a valid http(s) URL');
+		}
+		if (type === 'hispashare') {
+			const { token } = validateHispashareConfig(config);
+			const quota = await new HispashareApiClient(url.trim(), token).checkToken();
+			const left = quota.remaining !== null && quota.limit !== null ? ` ${quota.remaining} of ${quota.limit} requests left this hour.` : '';
+			return `Connected to Hispashare.${left}`;
+		}
+		if (!isArrExtensionType(type)) {
+			throw new Error('Connection test is not supported for this extension type');
 		}
 		const { apiKey } = validateArrConfig(config);
 		const status = await createArrApiClient(type, url.trim(), apiKey).getSystemStatus();

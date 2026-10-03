@@ -36,6 +36,7 @@ export class RadarrApiClient extends ArrApiClient {
 	/**
 	 * One job per available missing movie; a hit must carry the movie's year, which is what keeps a
 	 * one-word title from dragging the whole network into the feed (Radarr needs the year to match anyway).
+	 * A provider that identifies the title itself (IMDb id on the result) is trusted without the year.
 	 */
 	async getWantedSearchJobs(): Promise<SearchJob[]> {
 		const movies = await this.getMissingMovies();
@@ -52,7 +53,7 @@ export class RadarrApiClient extends ArrApiClient {
 				imdbId: m.imdbId,
 				title: m.title,
 				pending: m.year ? [String(m.year)] : [],
-				matches: (r) => !m.year || releaseMatchesYear(r.name, m.year),
+				matches: (r) => (!!m.imdbId && r.imdbId === m.imdbId) || !m.year || releaseMatchesYear(r.name, m.year),
 			});
 		}
 		return jobs;

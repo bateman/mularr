@@ -1,4 +1,4 @@
-export type ExtensionType = 'validator' | 'enhanced_search' | 'webhook' | 'telegram_indexer' | 'media_previewer' | 'sonarr' | 'radarr';
+export type ExtensionType = 'validator' | 'enhanced_search' | 'webhook' | 'telegram_indexer' | 'media_previewer' | 'sonarr' | 'radarr' | 'hispashare';
 
 export interface Extension {
 	id: number;

@@ -36,6 +36,11 @@ export interface SearchCriteria {
 	 * case-insensitively by AmuleService. Only the aMule provider has a use for it.
 	 */
 	amuleSearchType?: string;
+	/**
+	 * Set by MediaSearchService: true when a user is waiting for the results (web UI), false for background
+	 * searches (Torznab, *arr wanted sync). Rate-limited providers use it to keep quota for the former.
+	 */
+	interactive?: boolean;
 }
 
 export interface IMediaProvider {

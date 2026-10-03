@@ -50,3 +50,7 @@
 .icon-emule {
 	background-image: url('/favicon.ico');
 }
+.icon-hispashare {
+	background-image: url('/favicon.ico');
+	filter: hue-rotate(90deg) brightness(1.2);
+}

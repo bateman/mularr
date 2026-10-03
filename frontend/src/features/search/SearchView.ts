@@ -26,7 +26,7 @@ function buildContextMenuActions(
 	const targets = selected.size > 0 ? list.filter((r) => r.hash && selected.has(r.hash)) : [result];
 	const multi = targets.length > 1;
 
-	const ed2kLinks = targets.filter((r) => r.provider === 'amule' && r.link).map((r) => r.link!);
+	const ed2kLinks = targets.filter((r) => r.link?.startsWith('ed2k://')).map((r) => r.link!);
 	if (ed2kLinks.length > 0) {
 		actions.push({
 			label: ed2kLinks.length > 1 ? `Copy ${ed2kLinks.length} ed2k Links` : 'Copy ed2k Link',
@@ -69,8 +69,22 @@ const MOBILE_SORT_OPTIONS: { value: string; label: string; col: keyof MediaSearc
 	{ value: 'size-desc', label: 'Size ↓', col: 'size', dir: 'desc' },
 ];
 
+/** Provider Info cell: the source label, linking to the release's page on the provider's website when it has one. */
+function sourceInfoContent(r: MediaSearchResult): string | HTMLElement {
+	if (!r.sourceName) return '';
+	if (!r.webUrl) return r.sourceName;
+	const a = document.createElement('a');
+	a.href = r.webUrl;
+	a.target = '_blank';
+	a.rel = 'noopener';
+	a.textContent = r.sourceName;
+	a.title = `Open on ${getProviderName(r.provider)}`;
+	a.onclick = (e) => e.stopPropagation(); // keep the row selection untouched
+	return a;
+}
+
 interface ResultsRowsProps {
-	onDownload: (hash: string) => void;
+	onDownload: (result: MediaSearchResult) => void;
 	downloadingHashes: Signal<Set<string>>;
 	selectionMgr: RowSelectionManager;
 	onBlacklisted: () => void;
@@ -128,7 +142,7 @@ const ResultsRows = componentList<MediaSearchResult, ResultsRowsProps>(
 						mobDownloadBtn: {
 							onclick: (e: MouseEvent) => {
 								e.stopPropagation();
-								onDownload(res.get().hash);
+								onDownload(res.get());
 							},
 							disabled: isDisabled,
 							inner: downloadBtnLabel,
@@ -149,11 +163,11 @@ const ResultsRows = componentList<MediaSearchResult, ResultsRowsProps>(
 						return `${((r.completeSourceCount / r.sourceCount) * 100).toFixed(0)}% (${r.completeSourceCount})`;
 					},
 				},
-				sourceInfoCol: { inner: () => res.get().sourceName || '' },
+				sourceInfoCol: { inner: () => sourceInfoContent(res.get()) },
 				downloadMiniBtn: {
 					onclick: (e: MouseEvent) => {
 						e.stopPropagation();
-						onDownload(res.get().hash);
+						onDownload(res.get());
 					},
 					disabled: isDisabled,
 					inner: downloadBtnLabel,
@@ -280,14 +294,18 @@ export const SearchView = component(() => {
 	// Initial load: check if a search is already in progress
 	startPolling();
 
-	const download = async (hash?: string) => {
+	const download = async (result: MediaSearchResult) => {
+		const hash = result.hash;
 		if (!hash) return;
 		try {
 			const s = new Set(downloadingHashes.get());
 			s.add(hash);
 			downloadingHashes.set(s);
 
-			await apiService.addDownload(hash);
+			// The whole ed2k link when the result carries one: aMule can only add a bare hash from its own last search,
+			// so results found by other providers (Hispashare) need the link.
+			const link = result.link?.startsWith('ed2k://') ? result.link : hash;
+			await apiService.addDownload(link);
 			console.log('Download added successfully');
 			loadResults();
 			mgr.clearSelection();
@@ -347,8 +365,7 @@ export const SearchView = component(() => {
 		},
 		resultsList: { inner: statusLog },
 		resultsContainer: {
-			inner: () =>
-				ResultsRows(visibleResults, { onDownload: (hash) => download(hash), downloadingHashes, selectionMgr: mgr, onBlacklisted: loadResults }),
+			inner: () => ResultsRows(visibleResults, { onDownload: (r) => download(r), downloadingHashes, selectionMgr: mgr, onBlacklisted: loadResults }),
 		},
 		ed2kForm: Ed2kDownloadForm({ onAdded: loadResults }),
 		downloadSelectedBtn: {

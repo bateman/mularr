@@ -5,6 +5,7 @@ import type { ConfigFormHandle, ConfigFormProps } from './ConfigForm';
 import { ArrConfigForm } from './ArrConfigForm';
 import { WebhookConfigForm } from './WebhookConfigForm';
 import { UrlConfigForm } from './UrlConfigForm';
+import { HispashareConfigForm } from './HispashareConfigForm';
 import tpl from './ExtensionForm.html';
 
 export interface ExtensionFormValues {
@@ -31,6 +32,8 @@ function createConfigForm(props: ConfigFormProps) {
 			return WebhookConfigForm(props);
 		case 'media_previewer':
 			return UrlConfigForm(props);
+		case 'hispashare':
+			return HispashareConfigForm(props);
 		default:
 			return null;
 	}

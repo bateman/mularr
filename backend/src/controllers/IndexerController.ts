@@ -4,6 +4,7 @@ import { eD2kLinkToFakeMagnet, hashToFakeMagnet } from './qbittorrentMappings';
 import { MediaSearchService, MediaSearchResult } from '../services/mediaprovider';
 import { MainDB, type IndexerFeedMediaType, type IndexerFeedRecord } from '../services/db/MainDB';
 import { expandApostrophes, filterByEpisode } from '../services/releaseNameTools';
+import { parseEd2kLink } from '../services/eD2kTools';
 import { LoggerFactory } from '../services/logging/Logger';
 
 /** What renderRss needs from a release. pubDate defaults to now (live search results). */
@@ -192,7 +193,8 @@ export class IndexerController {
 		for (const item of results) {
 			const title = this.escapeXml(item.name);
 			const hash = item.hash;
-			const link = item.link && item.provider === 'amule' ? eD2kLinkToFakeMagnet(item.link) : hashToFakeMagnet(hash);
+			// Any ed2k link (aMule's own results, Hispashare's) travels whole so aMule can add it without a prior search
+			const link = item.link && parseEd2kLink(item.link) ? eD2kLinkToFakeMagnet(item.link) : hashToFakeMagnet(hash);
 			const downloadUrl = this.escapeXml(link);
 			itemsXml += `
     <item>
