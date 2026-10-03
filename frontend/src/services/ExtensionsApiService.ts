@@ -50,10 +50,15 @@ export function isArrExtensionType(type: string): boolean {
 export const ARR_SYNC_DEFAULT_INTERVAL_MINUTES = 60;
 export const ARR_SYNC_MIN_INTERVAL_MINUTES = 15;
 
-/** Settings of a sonarr/radarr extension, stored as { apiKey, intervalMinutes } in its config. */
+/**
+ * Settings of a sonarr/radarr extension, stored as { apiKey, intervalMinutes, searchProviders } in its config.
+ * Must match ArrExtensionConfig in backend/src/services/arrsync/ArrSyncService.ts.
+ */
 export interface ArrExtensionConfig {
 	apiKey: string;
 	intervalMinutes: number;
+	/** Search providers the wanted titles are looked up on; undefined (configs saved before it existed) means all. */
+	searchProviders?: string[];
 }
 
 export function parseArrConfig(config?: string): ArrExtensionConfig {
@@ -62,6 +67,9 @@ export function parseArrConfig(config?: string): ArrExtensionConfig {
 		return {
 			apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
 			intervalMinutes: Number.isInteger(parsed.intervalMinutes) ? parsed.intervalMinutes : ARR_SYNC_DEFAULT_INTERVAL_MINUTES,
+			searchProviders: Array.isArray(parsed.searchProviders)
+				? parsed.searchProviders.filter((p: unknown): p is string => typeof p === 'string')
+				: undefined,
 		};
 	} catch {
 		return { apiKey: '', intervalMinutes: ARR_SYNC_DEFAULT_INTERVAL_MINUTES };

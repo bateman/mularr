@@ -6,8 +6,9 @@ import type { MediaTransfer, MediaSearchResult } from '../../types/MediaTypes';
 
 // The wire contract lives in src/types (the frontend imports it from there too) and is re-exported
 // here so backend code keeps importing from this module.
-export { CHUNK_STATUS } from '../../types/MediaTypes';
+export { CHUNK_STATUS, SEARCH_PROVIDER_IDS } from '../../types/MediaTypes';
 export type {
+	SearchProviderId,
 	ChunkInfo,
 	TransferSource,
 	TransferSourceNameCount,
@@ -41,6 +42,12 @@ export interface SearchCriteria {
 	 * searches (Torznab, *arr wanted sync). Rate-limited providers use it to keep quota for the former.
 	 */
 	interactive?: boolean;
+	/**
+	 * Ids of the providers to search (see SEARCH_PROVIDER_IDS); every provider when absent. Honoured by
+	 * MediaSearchService, which leaves the others out of the search and of the collected results. The *arr
+	 * wanted sync sets it from the extension's config, e.g. to keep an unreliable network out of the feed.
+	 */
+	providers?: readonly string[];
 }
 
 export interface IMediaProvider {

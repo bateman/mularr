@@ -2,7 +2,7 @@ import { container } from '../container/ServiceContainer';
 import { MainDB, blacklistEntryMatches } from '../db/MainDB';
 import { AppEvents } from '../AppEvents';
 import { MediaProviderService } from './MediaProviderService';
-import type { MediaSearchResult, MediaSearchResponse, MediaSearchStatusResponse, SearchCriteria } from './types';
+import type { IMediaProvider, MediaSearchResult, MediaSearchResponse, MediaSearchStatusResponse, SearchCriteria } from './types';
 import { LoggerFactory } from '../logging/Logger';
 
 /**
@@ -54,15 +54,26 @@ export class MediaSearchService {
 	}
 
 	/**
-	 * Fire-and-forget search. `interactive` marks one driven by a client that polls getSearchResults itself
-	 * (the web UI): background searches (see searchAndCollect) hold off while such a search is recent,
-	 * because starting another one would replace the results the client is watching.
+	 * Fire-and-forget search on the providers the criteria select (see SearchCriteria.providers). `interactive`
+	 * marks one driven by a client that polls getSearchResults itself (the web UI): background searches (see
+	 * searchAndCollect) hold off while such a search is recent, because starting another one would replace
+	 * the results the client is watching.
 	 */
 	async startSearch(criteria: SearchCriteria, interactive = false): Promise<void> {
+		const providers = this.selectProviders(criteria);
 		if (interactive) this._lastInteractiveSearchAt = Date.now();
-		await Promise.allSettled(this.providers.map((p) => p.startSearch({ ...criteria, interactive })));
+		await Promise.allSettled(providers.map((p) => p.startSearch({ ...criteria, interactive })));
 		this.searchHistory.addEntry(criteria.query, criteria.query);
 		this.events.emit('search.started', { query: criteria.query });
+	}
+
+	/** Providers taking part in a search: those named by criteria.providers, or all of them. Throws when none of the named ones exists. */
+	private selectProviders(criteria: SearchCriteria): IMediaProvider[] {
+		const wanted = criteria.providers;
+		if (!wanted) return this.providers;
+		const selected = this.providers.filter((p) => wanted.includes(p.providerId));
+		if (selected.length === 0) throw new Error(`None of the selected search providers is available: ${wanted.join(', ')}`);
+		return selected;
 	}
 
 	/** Epoch ms of the last interactive startSearch; 0 when none happened yet. */
@@ -70,8 +81,13 @@ export class MediaSearchService {
 		return this._lastInteractiveSearchAt;
 	}
 
-	async getSearchResults(): Promise<MediaSearchResponse> {
-		const perProvider = await Promise.allSettled(this.providers.map((p) => p.getSearchResults()));
+	/** Results of the current search across every provider, as the web UI polls them. */
+	getSearchResults(): Promise<MediaSearchResponse> {
+		return this.collectResults(this.providers);
+	}
+
+	private async collectResults(providers: IMediaProvider[]): Promise<MediaSearchResponse> {
+		const perProvider = await Promise.allSettled(providers.map((p) => p.getSearchResults()));
 		const combined: MediaSearchResult[] = [];
 		for (const r of perProvider) {
 			if (r.status === 'fulfilled') {
@@ -95,9 +111,13 @@ export class MediaSearchService {
 		return { visible, blacklistedCount: results.length - visible.length };
 	}
 
-	async getSearchStatus(): Promise<MediaSearchStatusResponse> {
+	getSearchStatus(): Promise<MediaSearchStatusResponse> {
+		return this.collectStatus(this.providers);
+	}
+
+	private async collectStatus(providers: IMediaProvider[]): Promise<MediaSearchStatusResponse> {
 		// Overall progress = minimum across providers (all must finish before we report 1.0)
-		const statuses = await Promise.allSettled(this.providers.map((p) => p.getSearchStatus()));
+		const statuses = await Promise.allSettled(providers.map((p) => p.getSearchStatus()));
 		let min = 1;
 		for (const s of statuses) {
 			if (s.status === 'fulfilled') min = Math.min(min, s.value);
@@ -116,14 +136,16 @@ export class MediaSearchService {
 	}
 
 	private async doSearchAndCollect(criteria: SearchCriteria): Promise<MediaSearchResult[]> {
+		// Only the providers searched are polled: a provider left out would report the results of its previous search
+		const providers = this.selectProviders(criteria);
 		await this.startSearch(criteria);
 		const startedAt = Date.now();
 		let lastCount = -1;
 		let stable = 0;
 		while (Date.now() - startedAt < SEARCH_MAX_WAIT_MS) {
 			await new Promise((r) => setTimeout(r, SEARCH_POLL_MS));
-			const status = await this.getSearchStatus();
-			const current = (await this.getSearchResults()).list.length;
+			const status = await this.collectStatus(providers);
+			const current = (await this.collectResults(providers)).list.length;
 			if (current === lastCount) {
 				stable++;
 				if (status.progress >= 1 && stable >= SEARCH_STABLE_POLLS) break;
@@ -133,7 +155,7 @@ export class MediaSearchService {
 			lastCount = current;
 			this.logger.debug(`Search progress: ${Math.floor(status.progress * 100)}%, results so far: ${current}`);
 		}
-		return (await this.getSearchResults()).list;
+		return (await this.collectResults(providers)).list;
 	}
 }
 

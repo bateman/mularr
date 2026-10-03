@@ -9,7 +9,7 @@ import { DialogService } from '../../services/DialogService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { MediaApiService, MediaSearchResult } from '../../services/MediaApiService';
 import { ExtensionsApiService } from '../../services/ExtensionsApiService';
-import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
+import { getAvailableSearchProviders, getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
 import { ContextMenuItem, ContextMenuService } from '../../services/ContextMenuService';
 import { ClipboardService } from '../../services/ClipboardService';
 import { ColumnsMenuService } from '../../services/ColumnsMenuService';
@@ -195,8 +195,7 @@ export const SearchView = component(() => {
 	inject(ExtensionsApiService)
 		.getExtensions()
 		.then((list) => {
-			const enabled = (type: string) => list.some((x) => x.type === type && !!x.enabled);
-			const providers = ['amule', ...(enabled('telegram_indexer') ? ['telegram'] : []), ...(enabled('hispashare') ? ['hispashare'] : [])];
+			const providers = getAvailableSearchProviders(list);
 			if (providers.length > 1)
 				providerFilterOptions.set([{ value: 'all', label: 'All' }, ...providers.map((p) => ({ value: p, label: getProviderName(p) }))]);
 		})

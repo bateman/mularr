@@ -13,6 +13,7 @@ import { DialogService } from '../../services/DialogService';
 import { ApiError } from '../../services/BaseApiService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { ColumnsMenuService } from '../../services/ColumnsMenuService';
+import { getProviderName } from '../../services/ProvidersApiService';
 import { TableColumns } from '../../utils/TableColumns';
 import { smartLoad, smartPoll } from '../../utils/scheduling';
 import { fbytes } from '../../utils/formats';
@@ -265,6 +266,7 @@ export const IndexerFeedView = component(() => {
 								title: s.nextRunAt ? new Date(s.nextRunAt).toLocaleString() : '',
 							},
 							cardCounts: { inner: counts },
+							cardProviders: { inner: s.searchProviders ? s.searchProviders.map((p) => getProviderName(p)).join(', ') : 'all' },
 							cardError: { inner: s.error ?? '', style: { display: s.error ? '' : 'none' } },
 						},
 					});

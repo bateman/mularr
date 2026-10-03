@@ -1,7 +1,7 @@
 import { container } from '../container/ServiceContainer';
 import { AmuledService } from '../AmuledService';
 import { MainDB, type Extension, type IndexerFeedRecord } from '../db/MainDB';
-import { MediaSearchService, type MediaSearchResult } from '../mediaprovider';
+import { MediaSearchService, SEARCH_PROVIDER_IDS, type MediaSearchResult, type SearchProviderId } from '../mediaprovider';
 import type { ArrSyncExtensionStatus, ArrSyncStatusResponse, WantedItem, WantedListResponse } from '../../types/IndexerFeedTypes';
 import { LoggerFactory } from '../logging/Logger';
 import type { ArrApiClient, ArrApp, SearchJob } from './ArrApiClient';
@@ -23,6 +23,11 @@ export interface ArrExtensionConfig {
 	apiKey: string;
 	/** Minutes between two sync runs of this instance. */
 	intervalMinutes: number;
+	/**
+	 * Search providers the wanted titles are looked up on, e.g. without aMule when its results are too
+	 * unreliable for an unattended feed. Absent in configs saved before this existed: every provider.
+	 */
+	searchProviders?: SearchProviderId[];
 }
 
 export const ARR_SYNC_DEFAULT_INTERVAL_MINUTES = 60;
@@ -42,7 +47,20 @@ export function validateArrConfig(config: Record<string, unknown>): ArrExtension
 		}
 		intervalMinutes = n;
 	}
-	return { apiKey, intervalMinutes };
+	const normalized: ArrExtensionConfig = { apiKey, intervalMinutes };
+	if (config.searchProviders !== undefined) {
+		if (!Array.isArray(config.searchProviders) || !config.searchProviders.every(isSearchProviderId)) {
+			throw new Error(`searchProviders must be an array of ${SEARCH_PROVIDER_IDS.join(', ')}`);
+		}
+		const searchProviders = [...new Set(config.searchProviders)];
+		if (searchProviders.length === 0) throw new Error('At least one search provider must be selected');
+		normalized.searchProviders = searchProviders;
+	}
+	return normalized;
+}
+
+function isSearchProviderId(value: unknown): value is SearchProviderId {
+	return typeof value === 'string' && (SEARCH_PROVIDER_IDS as readonly string[]).includes(value);
 }
 
 /** Client for the given app; the extension's `url` is the instance base URL. */
@@ -154,6 +172,7 @@ export class ArrSyncService {
 			enabled: !!ext.enabled,
 			configured: !!config,
 			intervalMinutes: config?.intervalMinutes ?? null,
+			searchProviders: config?.searchProviders ?? null,
 			running: this.currentExtensionId === ext.id,
 			queued: this.forcedRuns.has(ext.id) && this.currentExtensionId !== ext.id,
 			lastRunAt: state ? new Date(state.lastRunAt).toISOString() : null,
@@ -301,11 +320,12 @@ export class ArrSyncService {
 		// Never searched first, then least recently searched, so a backlog larger than one run is covered over time
 		jobs.sort((a, b) => (this.lastSearchedByJob.get(this.jobKey(ext, a)) ?? 0) - (this.lastSearchedByJob.get(this.jobKey(ext, b)) ?? 0));
 		const batch = jobs.slice(0, MAX_QUERIES_PER_RUN);
-		this.logger.info(`[${ext.name}] ${jobs.length} wanted title(s); searching ${batch.length} this run`);
+		const providersNote = config.searchProviders ? ` on ${config.searchProviders.join(', ')}` : '';
+		this.logger.info(`[${ext.name}] ${jobs.length} wanted title(s); searching ${batch.length} this run${providersNote}`);
 
 		let found = 0;
 		for (const job of batch) {
-			const results = await this.searchService.searchAndCollect({ query: job.query, imdbId: job.imdbId });
+			const results = await this.searchService.searchAndCollect({ query: job.query, imdbId: job.imdbId, providers: config.searchProviders });
 			const hits = results
 				.filter((r) => r.hash && job.matches(r))
 				.sort((a, b) => (b.sourceCount ?? 0) - (a.sourceCount ?? 0))

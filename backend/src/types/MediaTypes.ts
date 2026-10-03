@@ -95,6 +95,13 @@ export interface MediaTransfersResponse {
 	categories: MediaCategory[];
 }
 
+/**
+ * Ids of the providers that take part in searches (MediaSearchResult.provider / IMediaProvider.providerId).
+ * The frontend keeps a copy in ProvidersApiService.ts; a value array cannot cross the type-only bridge.
+ */
+export const SEARCH_PROVIDER_IDS = ['amule', 'telegram', 'hispashare'] as const;
+export type SearchProviderId = (typeof SEARCH_PROVIDER_IDS)[number];
+
 export interface MediaSearchResult {
 	name: string;
 	size: number;

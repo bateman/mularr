@@ -1,4 +1,6 @@
+export { SEARCH_PROVIDER_IDS } from './types';
 export type {
+	SearchProviderId,
 	IMediaProvider,
 	SearchCriteria,
 	MediaTransfer,

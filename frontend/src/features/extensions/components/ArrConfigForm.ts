@@ -6,10 +6,20 @@ import {
 	parseArrConfig,
 	type ArrExtensionConfig,
 } from '../../../services/ExtensionsApiService';
+import {
+	SEARCH_PROVIDER_IDS,
+	getAvailableSearchProviders,
+	getProviderIcon,
+	getProviderName,
+	type SearchProviderId,
+} from '../../../services/ProvidersApiService';
 import type { ConfigFormProps, ConfigFormValues } from './ConfigForm';
 import tpl from './ArrConfigForm.html';
 
-/** Config form for the sonarr/radarr extensions: endpoint, API key and how often the wanted list is synced. */
+/**
+ * Config form for the sonarr/radarr extensions: endpoint, API key, how often the wanted list is synced and
+ * which search providers it is looked up on.
+ */
 export const ArrConfigForm = component<ConfigFormProps>(({ type, extension, handle }) => {
 	const api = inject(ExtensionsApiService);
 	const stored = parseArrConfig(extension?.config);
@@ -19,6 +29,18 @@ export const ArrConfigForm = component<ConfigFormProps>(({ type, extension, hand
 	const apiKey = signal(stored.apiKey);
 	const interval = signal(String(stored.intervalMinutes));
 
+	// Providers the sync can use right now, from the extensions; empty until they are loaded. A config saved
+	// without a selection (or a new extension) starts with all of them checked.
+	const availableProviders = signal<SearchProviderId[]>([]);
+	const selectedProviders = new Set<string>(stored.searchProviders ?? []);
+	api.getExtensions()
+		.then((list) => getAvailableSearchProviders(list))
+		.catch(() => [...SEARCH_PROVIDER_IDS])
+		.then((ids) => {
+			if (stored.searchProviders === undefined) ids.forEach((id) => selectedProviders.add(id));
+			availableProviders.set(ids);
+		});
+
 	const read = (): (ConfigFormValues & { config: ArrExtensionConfig }) | { error: string } => {
 		const urlValue = url.get().trim();
 		if (!urlValue) return { error: 'URL is required' };
@@ -27,7 +49,16 @@ export const ArrConfigForm = component<ConfigFormProps>(({ type, extension, hand
 			return { error: `The sync interval must be a whole number of at least ${ARR_SYNC_MIN_INTERVAL_MINUTES} minutes` };
 		}
 		if (!apiKey.get().trim()) return { error: 'API key is required' };
-		return { url: urlValue, config: { apiKey: apiKey.get().trim(), intervalMinutes } };
+		const config: Record<string, unknown> & ArrExtensionConfig = { apiKey: apiKey.get().trim(), intervalMinutes };
+		const available = availableProviders.get();
+		if (available.length > 0) {
+			// Only providers listed can be kept: one whose extension was disabled meanwhile is dropped
+			config.searchProviders = available.filter((id) => selectedProviders.has(id));
+			if (config.searchProviders.length === 0) return { error: 'Select at least one search provider' };
+		} else if (stored.searchProviders !== undefined) {
+			config.searchProviders = stored.searchProviders; // list not loaded yet: keep what was stored
+		}
+		return { url: urlValue, config };
 	};
 
 	handle.read = read;
@@ -44,5 +75,23 @@ export const ArrConfigForm = component<ConfigFormProps>(({ type, extension, hand
 		apiKeyInput: { _ref: refBindInput(apiKey) },
 		intervalInput: { _ref: refBindInput(interval), min: String(ARR_SYNC_MIN_INTERVAL_MINUTES) },
 		intervalHint: { inner: `min. ${ARR_SYNC_MIN_INTERVAL_MINUTES}; each run performs up to 10 searches` },
+		providersList: {
+			inner: () =>
+				availableProviders.get().map((id) =>
+					tpl.providerRow({
+						nodes: {
+							providerCheckbox: {
+								checked: selectedProviders.has(id),
+								onchange: (e: Event) => {
+									if ((e.target as HTMLInputElement).checked) selectedProviders.add(id);
+									else selectedProviders.delete(id);
+								},
+							},
+							providerIcon: { inner: getProviderIcon(id) },
+							providerName: { inner: getProviderName(id) },
+						},
+					})
+				),
+		},
 	});
 });

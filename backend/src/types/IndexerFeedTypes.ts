@@ -49,6 +49,8 @@ export interface ArrSyncExtensionStatus {
 	/** False when the stored config has no usable API key; such an extension is never synced. */
 	configured: boolean;
 	intervalMinutes: number | null;
+	/** Ids of the search providers this extension's titles are looked up on; null when it searches all of them. */
+	searchProviders: string[] | null;
 	/** A run for this extension is in progress. */
 	running: boolean;
 	/** A manual run was requested and waits for the current run to finish. */
