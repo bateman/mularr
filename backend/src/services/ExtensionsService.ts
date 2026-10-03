@@ -28,8 +28,16 @@ export class ExtensionsService {
 		return this.db.getAllExtensions();
 	}
 
-	addExtension(extension: Omit<Extension, 'id'>) {
-		return this.db.addExtension(extension);
+	/**
+	 * Creates an extension with its settings in one step, so nothing half-configured is ever stored.
+	 * The config is validated like in updateExtensionConfig. Throws a message fit for the user.
+	 */
+	addExtension(extension: Omit<Extension, 'id' | 'config'>, config?: Record<string, unknown>) {
+		const name = typeof extension.name === 'string' ? extension.name.trim() : '';
+		if (!name) throw new Error('Label is required');
+		const url = typeof extension.url === 'string' ? extension.url.trim() : '';
+		const normalized = config ? this.normalizeConfig(extension.type, config) : undefined;
+		return this.db.addExtension({ ...extension, name, url, config: normalized ? JSON.stringify(normalized) : undefined });
 	}
 
 	deleteExtension(id: number) {
@@ -56,16 +64,21 @@ export class ExtensionsService {
 	updateExtensionConfig(id: number, config: Record<string, unknown>) {
 		const extension = this.db.getExtensionById(id);
 		if (!extension) throw new Error(`Extension ${id} not found`);
-		if (extension.type === 'webhook') {
+		this.db.updateExtensionConfig(id, JSON.stringify(this.normalizeConfig(extension.type, config)));
+	}
+
+	/** Validates a config for the extension type and returns it normalized. Throws a message fit for the user. */
+	private normalizeConfig(type: string, config: Record<string, unknown>): Record<string, unknown> {
+		if (type === 'webhook') {
 			const events = config.events;
 			if (!Array.isArray(events) || !events.every(isAppEvent)) {
 				throw new Error('Webhook config must contain an "events" array of valid event names');
 			}
-		} else if (isArrExtensionType(extension.type)) {
-			// Normalized so the stored config always carries a usable interval
-			config = { ...validateArrConfig(config) };
+			return config;
 		}
-		this.db.updateExtensionConfig(id, JSON.stringify(config));
+		// Normalized so the stored config always carries usable values (e.g. the default sync interval)
+		if (isArrExtensionType(type)) return { ...validateArrConfig(config) };
+		return config;
 	}
 
 	/**

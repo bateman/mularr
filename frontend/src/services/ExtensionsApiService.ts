@@ -79,7 +79,8 @@ export class ExtensionsApiService extends BaseApiService {
 		return this.request<Extension[]>('');
 	}
 
-	async addExtension(v: Partial<Extension>): Promise<{ success: boolean; id?: number }> {
+	/** Creates the extension together with its type-specific settings; the backend validates them as one. */
+	async addExtension(v: { name: string; url: string; type: ExtensionType; enabled: number; config?: object }): Promise<{ success: boolean; id?: number }> {
 		return this.request<{ success: boolean; id?: number }>('', {
 			method: 'POST',
 			body: JSON.stringify(v),
