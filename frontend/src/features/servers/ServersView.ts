@@ -1,11 +1,13 @@
 import { inject, component, componentList, computed, effect, refBindInput, Signal, signal } from 'chispa';
 import { AmuleApiService, Server } from '../../services/AmuleApiService';
 import { ContextMenuService, ContextMenuItem } from '../../services/ContextMenuService';
+import { ColumnsMenuService } from '../../services/ColumnsMenuService';
 import { DialogService } from '../../services/DialogService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { StatsService } from '../../services/StatsService';
 import { LogLine, WsService } from '../../services/WsService';
 import { ListManager } from '../../utils/ListManager';
+import { TableColumns } from '../../utils/TableColumns';
 import { formatAmount } from '../../utils/formats';
 import { smartLoad } from '../../utils/scheduling';
 import { AddServerDialog } from './AddServerDialog';
@@ -145,6 +147,8 @@ export const ServersView = component(() => {
 	const dialogService = inject(DialogService);
 	const prefs = inject(LocalPrefsService);
 	const ws = inject(WsService);
+	const columnsMenu = inject(ColumnsMenuService);
+	const columns = new TableColumns({ prefs, prefsKey: 'servers' });
 
 	const mgr = new ListManager<ServerItem, keyof ServerItem>({
 		defaultColumn: 'name',
@@ -298,6 +302,8 @@ export const ServersView = component(() => {
 		thSoftLimit: { onclick: () => mgr.sort('softFileLimit') },
 		thLowID: { onclick: () => mgr.sort('lowID') },
 		thObfuscated: { onclick: () => mgr.sort('obfuscated') },
+		serversTable: { _ref: (el) => columns.attach(el) },
+		columnsBtn: { onclick: (e) => columnsMenu.show(e.currentTarget as HTMLElement, columns) },
 
 		serverListContainer: {
 			inner: () => {

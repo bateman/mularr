@@ -11,6 +11,9 @@ import {
 import { BlacklistService } from '../../services/BlacklistService';
 import { DialogService } from '../../services/DialogService';
 import { ApiError } from '../../services/BaseApiService';
+import { LocalPrefsService } from '../../services/LocalPrefsService';
+import { ColumnsMenuService } from '../../services/ColumnsMenuService';
+import { TableColumns } from '../../utils/TableColumns';
 import { smartLoad, smartPoll } from '../../utils/scheduling';
 import { fbytes } from '../../utils/formats';
 import tpl from './IndexerFeedView.html';
@@ -53,6 +56,10 @@ export const IndexerFeedView = component(() => {
 	const api = inject(IndexerFeedApiService);
 	const blacklistService = inject(BlacklistService);
 	const dialogService = inject(DialogService);
+	const prefs = inject(LocalPrefsService);
+	const columnsMenu = inject(ColumnsMenuService);
+	const wantedColumns = new TableColumns({ prefs, prefsKey: 'indexerfeed.wanted' });
+	const feedColumns = new TableColumns({ prefs, prefsKey: 'indexerfeed.feed' });
 
 	const tab = signal<Tab>('wanted');
 
@@ -227,6 +234,10 @@ export const IndexerFeedView = component(() => {
 			},
 		},
 		btnClear: { onclick: clearFeed, disabled: () => total.get() === 0, style: showWhen(onFeedTab) },
+		// One button for both tabs: it opens the menu of the table currently shown
+		columnsBtn: { onclick: (e) => columnsMenu.show(e.currentTarget as HTMLElement, onFeedTab() ? feedColumns : wantedColumns) },
+		wantedTable: { _ref: (el) => wantedColumns.attach(el) },
+		feedTable: { _ref: (el) => feedColumns.attach(el) },
 
 		postponedNote: { inner: () => (status.get()?.postponedReason ? `Postponed: ${status.get()!.postponedReason}` : '') },
 		syncCards: {

@@ -24,6 +24,7 @@
 		</div>
 		<button class="ui-btn" data-cb="btnRefresh">Refresh</button>
 		<button class="ui-btn" data-cb="btnClear">Clear Feed</button>
+		<button class="ui-btn ui-btn-icon ui-columns-btn" data-cb="columnsBtn" title="Choose columns">▦</button>
 	</div>
 
 	<!-- Wanted sync status, one card per Sonarr/Radarr extension -->
@@ -63,7 +64,7 @@
 		<div data-cb="wantedErrors" class="wanted-errors">
 			<div data-cb="wantedError" class="wanted-error"></div>
 		</div>
-		<table class="ui-list">
+		<table class="ui-list" data-cb="wantedTable">
 			<thead>
 				<tr>
 					<th class="is-mobile-primary">Title</th>
@@ -119,7 +120,7 @@
 
 	<!-- Feed tab: what the Torznab endpoint serves -->
 	<div data-cb="feedPane" class="ui-table-container" style="flex: 1">
-		<table class="ui-list">
+		<table class="ui-list" data-cb="feedTable">
 			<thead>
 				<tr>
 					<th class="is-mobile-primary">Name</th>

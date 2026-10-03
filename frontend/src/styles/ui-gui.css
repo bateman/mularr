@@ -119,6 +119,9 @@ body {
 	padding: 2px 2px;
 	font-weight: bold;
 	color: var(--ui-text);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
 }
 
 .ui-feature-topbar {

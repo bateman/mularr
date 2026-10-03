@@ -5,8 +5,10 @@ import { DialogService } from '../../services/DialogService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { WsService } from '../../services/WsService';
 import { TransfersContextService } from '../../services/TransfersContextService';
+import { ColumnsMenuService } from '../../services/ColumnsMenuService';
 import { fbytes } from '../../utils/formats';
 import { ListManager } from '../../utils/ListManager';
+import { TableColumns } from '../../utils/TableColumns';
 import { Ed2kDownloadForm } from '../search/Ed2kDownloadForm';
 import { DEFAULT_VALUE, TransfersRows } from './TransferRows';
 import tpl from './TransfersView.html';
@@ -39,6 +41,9 @@ export const TransfersView = component(() => {
 	const dialogService = inject(DialogService);
 	const prefs = inject(LocalPrefsService);
 	const ws = inject(WsService);
+	const columnsMenu = inject(ColumnsMenuService);
+	const downloadsColumns = new TableColumns({ prefs, prefsKey: 'transfers' });
+	const uploadsColumns = new TableColumns({ prefs, prefsKey: 'transfers.uploads' });
 
 	const mgr = new ListManager<MediaTransfer, keyof MediaTransfer>({
 		defaultColumn: 'name',
@@ -193,6 +198,10 @@ export const TransfersView = component(() => {
 		thStatus: { onclick: () => mgr.sort('status') },
 		thRemaining: { onclick: () => mgr.sort('remaining') },
 		thAddedOn: { onclick: () => mgr.sort('addedOn') },
+		downloadsTable: { _ref: (el) => downloadsColumns.attach(el) },
+		downloadsColumnsBtn: { onclick: (e) => columnsMenu.show(e.currentTarget as HTMLElement, downloadsColumns) },
+		uploadsTable: { _ref: (el) => uploadsColumns.attach(el) },
+		uploadsColumnsBtn: { onclick: (e) => columnsMenu.show(e.currentTarget as HTMLElement, uploadsColumns) },
 
 		transferListContainer: {
 			inner: () =>

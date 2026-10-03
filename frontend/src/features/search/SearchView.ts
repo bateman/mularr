@@ -2,6 +2,7 @@ import { inject, component, signal, refBindInput, refBindSelect, onUnmount, effe
 import { getFileIcon } from '../../utils/icons';
 import { fbytes } from '../../utils/formats';
 import { ListManager, RowSelectionManager } from '../../utils/ListManager';
+import { TableColumns } from '../../utils/TableColumns';
 import { smartLoad } from '../../utils/scheduling';
 import { sourceInfoContent } from '../../utils/sourceInfo';
 import { DialogService } from '../../services/DialogService';
@@ -11,6 +12,7 @@ import { ExtensionsApiService } from '../../services/ExtensionsApiService';
 import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
 import { ContextMenuItem, ContextMenuService } from '../../services/ContextMenuService';
 import { ClipboardService } from '../../services/ClipboardService';
+import { ColumnsMenuService } from '../../services/ColumnsMenuService';
 import { BlacklistService } from '../../services/BlacklistService';
 import { Ed2kDownloadForm } from './Ed2kDownloadForm';
 import tpl from './SearchView.html';
@@ -169,6 +171,8 @@ export const SearchView = component(() => {
 	const apiService = inject(MediaApiService);
 	const dialogService = inject(DialogService);
 	const prefs = inject(LocalPrefsService);
+	const columnsMenu = inject(ColumnsMenuService);
+	const columns = new TableColumns({ prefs, prefsKey: 'search' });
 
 	const statusLog = signal('');
 	const searchQuery = signal('');
@@ -337,6 +341,8 @@ export const SearchView = component(() => {
 		thSources: { onclick: () => mgr.sort('sourceCount') },
 		thCompleted: { onclick: () => mgr.sort('completeSourceCount') },
 		thType: { onclick: () => mgr.sort('type') },
+		resultsTable: { _ref: (el) => columns.attach(el) },
+		columnsBtn: { onclick: (e) => columnsMenu.show(e.currentTarget as HTMLElement, columns) },
 
 		searchInput: {
 			_ref: refBindInput(searchQuery),

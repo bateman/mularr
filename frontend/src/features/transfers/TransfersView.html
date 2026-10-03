@@ -44,9 +44,9 @@
 
 	<!-- Active Downloads -->
 	<div style="flex: 3; display: flex; flex-direction: column; min-height: 0;">
-		<div class="ui-header-small">Active Downloads</div>
+		<div class="ui-header-small">Active Downloads <button class="ui-btn ui-btn-icon ui-columns-btn" data-cb="downloadsColumnsBtn" title="Choose columns">▦</button></div>
 		<div class="ui-table-container" style="flex: 1;">
-			<table class="ui-list">
+			<table class="ui-list" data-cb="downloadsTable">
 				<thead>
 					<tr>
 						<th data-cb="thName" style="cursor: pointer" class="is-mobile-primary">Filename</th>
@@ -123,9 +123,9 @@
 
 	<!-- Uploading  -->
 	<div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
-		<div class="ui-header-small">Upload Queue</div>
+		<div class="ui-header-small">Upload Queue <button class="ui-btn ui-btn-icon ui-columns-btn" data-cb="uploadsColumnsBtn" title="Choose columns">▦</button></div>
 		<div class="ui-table-container" style="flex: 1;">
-			<table class="ui-list">
+			<table class="ui-list" data-cb="uploadsTable">
 				<thead>
 					<tr>
 						<th>Client Name</th>
