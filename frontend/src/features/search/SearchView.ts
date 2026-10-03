@@ -1,4 +1,4 @@
-import { inject, component, signal, refBindInput, refBindSelect, onUnmount, effect, computed, componentList, Signal } from 'chispa';
+import { inject, component, signal, refBindInput, refBindSelect, onUnmount, effect, computed, componentList, Signal, SelectOption } from 'chispa';
 import { getFileIcon } from '../../utils/icons';
 import { fbytes } from '../../utils/formats';
 import { ListManager, RowSelectionManager } from '../../utils/ListManager';
@@ -185,12 +185,17 @@ export const SearchView = component(() => {
 		prefs.set('search.type', searchType.get());
 	});
 
-	// Provider filter (only shown when the Telegram indexer extension is enabled)
+	// Provider filter: one option per search provider, shown only once an extension adds a second one to aMule
 	const providerFilter = signal('all');
-	const telegramEnabled = signal(false);
+	const providerFilterOptions = signal<SelectOption[]>([]);
 	inject(ExtensionsApiService)
 		.getExtensions()
-		.then((list) => telegramEnabled.set(list.some((x) => x.type === 'telegram_indexer' && !!x.enabled)))
+		.then((list) => {
+			const enabled = (type: string) => list.some((x) => x.type === type && !!x.enabled);
+			const providers = ['amule', ...(enabled('telegram_indexer') ? ['telegram'] : []), ...(enabled('hispashare') ? ['hispashare'] : [])];
+			if (providers.length > 1)
+				providerFilterOptions.set([{ value: 'all', label: 'All' }, ...providers.map((p) => ({ value: p, label: getProviderName(p) }))]);
+		})
 		.catch(() => {});
 
 	const visibleResults = computed(() => {
@@ -345,10 +350,10 @@ export const SearchView = component(() => {
 		searchBtn: { onclick: performSearch },
 		refreshBtn: { onclick: loadResults },
 		providerFilterBlock: {
-			style: { display: () => (telegramEnabled.get() ? '' : 'none') },
+			style: { display: () => (providerFilterOptions.get().length > 0 ? '' : 'none') },
 		},
 		providerFilterSelect: {
-			_ref: refBindSelect(providerFilter),
+			_ref: refBindSelect(providerFilter, providerFilterOptions),
 		},
 		resultsList: { inner: statusLog },
 		resultsContainer: {

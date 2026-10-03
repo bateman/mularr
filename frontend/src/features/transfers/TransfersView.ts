@@ -21,8 +21,8 @@ const MOBILE_SORT_OPTIONS: { value: string; label: string; col: keyof MediaTrans
 	{ value: 'name-desc', label: 'Name Z→A', col: 'name', dir: 'desc' },
 	{ value: 'sources-asc', label: 'Sources ↑', col: 'sourceCount', dir: 'asc' },
 	{ value: 'sources-desc', label: 'Sources ↓', col: 'sourceCount', dir: 'desc' },
-	{ value: 'provider-asc', label: 'Provider A→Z', col: 'provider', dir: 'asc' },
-	{ value: 'provider-desc', label: 'Provider Z→A', col: 'provider', dir: 'desc' },
+	{ value: 'provider-asc', label: 'Network A→Z', col: 'provider', dir: 'asc' },
+	{ value: 'provider-desc', label: 'Network Z→A', col: 'provider', dir: 'desc' },
 ];
 
 function getSelectedTransfers(hashes: Set<string>, list: MediaTransfer[]): MediaTransfer[] {
