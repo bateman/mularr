@@ -23,6 +23,11 @@ export interface IndexerFeedItem {
 	imdb_id: string | null;
 	/** Wanted title the hit was found for (see WantedItem.key); null for rows written before this existed. */
 	job_key: string | null;
+	/**
+	 * JSON snapshot of the MediaSearchResult the release was discovered as. Attached to the download when the
+	 * *arr grabs the item from the RSS feed, long after the search left the in-memory history.
+	 */
+	search_result: string | null;
 	/** ISO timestamp of the first discovery. Kept on re-discovery: the *arr RSS paging stops at items older than its last sync. */
 	discovered_at: string;
 }

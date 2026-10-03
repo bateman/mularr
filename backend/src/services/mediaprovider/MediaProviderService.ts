@@ -10,7 +10,7 @@ import { parseEd2kLink } from '../eD2kTools';
 import { AmuleMediaProvider } from './adapters/AmuleMediaProvider';
 import { TelegramMediaProvider } from './adapters/TelegramMediaProvider';
 import { HispashareMediaProvider } from './adapters/HispashareMediaProvider';
-import type { MediaCategory, IMediaProvider, MediaTransfer, MediaTransfersResponse } from './types';
+import type { MediaCategory, IMediaProvider, MediaSearchResult, MediaTransfer, MediaTransfersResponse } from './types';
 import { LoggerFactory } from '../logging/Logger';
 
 /**
@@ -66,6 +66,7 @@ export class MediaProviderService {
 		for (const r of perProvider) {
 			if (r.status === 'fulfilled') combined.push(...r.value);
 		}
+		this.applySearchResults(combined);
 
 		let categories: MediaCategory[] = [];
 		try {
@@ -92,6 +93,27 @@ export class MediaProviderService {
 	async clearCompletedTransfers(hashes?: string[]): Promise<void> {
 		await Promise.allSettled(this.providers.map((p) => p.clearCompletedTransfers(hashes)));
 		this.invalidateTransfers();
+	}
+
+	/**
+	 * Fills sourceName/webUrl from the search-result snapshot kept on the download record (see
+	 * DownloadDbRecord.search_result), for transfers whose provider did not set them itself.
+	 */
+	private applySearchResults(transfers: MediaTransfer[]): void {
+		const byHash = new Map<string, string>();
+		for (const d of this.db.getAllDownloads()) if (d.search_result) byHash.set(d.hash.toLowerCase(), d.search_result);
+		if (byHash.size === 0) return;
+		for (const t of transfers) {
+			const json = t.hash ? byHash.get(t.hash.toLowerCase()) : undefined;
+			if (!json) continue;
+			try {
+				const r = JSON.parse(json) as Partial<MediaSearchResult>;
+				if (!t.sourceName && r.sourceName) t.sourceName = r.sourceName;
+				if (!t.webUrl && r.webUrl) t.webUrl = r.webUrl;
+			} catch {
+				// A corrupt snapshot only loses the label
+			}
+		}
 	}
 
 	// ---- Download management ---------------------------------------------------

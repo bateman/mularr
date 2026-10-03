@@ -123,7 +123,9 @@ function toSearchResults(titles: HispashareTitle[]): MediaSearchResult[] {
 	const byHash = new Map<string, MediaSearchResult>();
 	for (const title of titles) {
 		const webUrl = hispashareTitleUrl(title.id);
-		for (const release of title.releases ?? []) {
+		// The title without its releases: each result carries its own release, not the siblings
+		const { releases, ...titleData } = title;
+		for (const release of releases ?? []) {
 			const sourceName = hispashareSourceName(title, release.release_info ?? '', release.language ?? []);
 			for (const link of release.elinks ?? []) {
 				const file = parseEd2kLink(link);
@@ -141,6 +143,7 @@ function toSearchResults(titles: HispashareTitle[]): MediaSearchResult[] {
 					sourceName,
 					webUrl,
 					imdbId: title.imdb_id ?? undefined,
+					providerData: { title: titleData, release },
 				});
 			}
 		}

@@ -169,6 +169,7 @@ export class TelegramMediaProvider implements IMediaProvider {
 				type: r.type || '',
 				provider: 'telegram',
 				sourceName: r.chatTitle ? (r.topicName ? `${r.chatTitle} › ${r.topicName}` : r.chatTitle) : undefined,
+				providerData: r,
 			};
 		});
 	}

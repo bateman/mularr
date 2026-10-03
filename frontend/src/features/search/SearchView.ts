@@ -3,6 +3,7 @@ import { getFileIcon } from '../../utils/icons';
 import { fbytes } from '../../utils/formats';
 import { ListManager, RowSelectionManager } from '../../utils/ListManager';
 import { smartLoad } from '../../utils/scheduling';
+import { sourceInfoContent } from '../../utils/sourceInfo';
 import { DialogService } from '../../services/DialogService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { MediaApiService, MediaSearchResult } from '../../services/MediaApiService';
@@ -68,20 +69,6 @@ const MOBILE_SORT_OPTIONS: { value: string; label: string; col: keyof MediaSearc
 	{ value: 'size-asc', label: 'Size ↑', col: 'size', dir: 'asc' },
 	{ value: 'size-desc', label: 'Size ↓', col: 'size', dir: 'desc' },
 ];
-
-/** Provider Info cell: the source label, linking to the release's page on the provider's website when it has one. */
-function sourceInfoContent(r: MediaSearchResult): string | HTMLElement {
-	if (!r.sourceName) return '';
-	if (!r.webUrl) return r.sourceName;
-	const a = document.createElement('a');
-	a.href = r.webUrl;
-	a.target = '_blank';
-	a.rel = 'noopener';
-	a.textContent = r.sourceName;
-	a.title = `Open on ${getProviderName(r.provider)}`;
-	a.onclick = (e) => e.stopPropagation(); // keep the row selection untouched
-	return a;
-}
 
 interface ResultsRowsProps {
 	onDownload: (result: MediaSearchResult) => void;

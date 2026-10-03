@@ -10,6 +10,11 @@ export interface DownloadDbRecord {
 	added_at: string;
 	is_completed: number;
 	provider?: string;
+	/**
+	 * JSON snapshot of the MediaSearchResult the download was added from, when it came from a search (see
+	 * MediaSearchService.recordSearchResult). Read for the origin of the release (sourceName, webUrl); the rest is as of that moment.
+	 */
+	search_result?: string | null;
 }
 
 export interface Extension {
@@ -80,7 +85,8 @@ export class MainDB {
 				category_name TEXT,
 				added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 				is_completed INTEGER DEFAULT 0,
-				provider TEXT DEFAULT 'amule'
+				provider TEXT DEFAULT 'amule',
+				search_result TEXT
 			);
 
 			CREATE TABLE IF NOT EXISTS extensions (
@@ -120,6 +126,7 @@ export class MainDB {
 				query TEXT,
 				imdb_id TEXT,
 				job_key TEXT,
+				search_result TEXT,
 				discovered_at DATETIME NOT NULL
 			);
 			CREATE INDEX IF NOT EXISTS idx_indexer_feed_discovered ON indexer_feed (media_type, discovered_at DESC);
@@ -141,6 +148,9 @@ export class MainDB {
 			if (!hasProvider) {
 				this.db.prepare("ALTER TABLE downloads ADD COLUMN provider TEXT DEFAULT 'amule'").run();
 			}
+			if (!dlTableInfo.some((col) => col.name === 'search_result')) {
+				this.db.prepare('ALTER TABLE downloads ADD COLUMN search_result TEXT').run();
+			}
 
 			const blTableInfo = this.db.prepare('PRAGMA table_info(blacklist)').all() as any[];
 			const hasSize = blTableInfo.some((col) => col.name === 'size');
@@ -152,7 +162,7 @@ export class MainDB {
 
 			// indexer_feed grew these columns while the feature was being developed
 			const feedTableInfo = this.db.prepare('PRAGMA table_info(indexer_feed)').all() as any[];
-			for (const column of ['imdb_id', 'job_key']) {
+			for (const column of ['imdb_id', 'job_key', 'search_result']) {
 				if (!feedTableInfo.some((col) => col.name === column)) {
 					this.db.prepare(`ALTER TABLE indexer_feed ADD COLUMN ${column} TEXT`).run();
 				}
@@ -181,6 +191,11 @@ export class MainDB {
 				.prepare('INSERT INTO downloads (hash, name, size, category_name, added_at, is_completed, provider) VALUES (?, ?, ?, ?, ?, ?, ?)')
 				.run(hash, name, size, categoryName, new Date().toISOString(), isCompleted ? 1 : 0, provider);
 		}
+	}
+
+	/** Attaches the search-result snapshot (see DownloadDbRecord.search_result) to a download. */
+	public setDownloadSearchResult(hash: string, searchResultJson: string) {
+		this.db.prepare('UPDATE downloads SET search_result = ? WHERE hash = ?').run(searchResultJson, hash);
 	}
 
 	public updateDownloadCompletion(hash: string, isCompleted: boolean, name?: string, size?: number) {
@@ -320,8 +335,8 @@ export class MainDB {
 	public upsertIndexerFeedItems(items: Omit<IndexerFeedRecord, 'discovered_at'>[]): void {
 		if (items.length === 0) return;
 		const stmt = this.db.prepare(`
-			INSERT INTO indexer_feed (hash, name, size, link, provider, source_count, media_type, query, imdb_id, job_key, discovered_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO indexer_feed (hash, name, size, link, provider, source_count, media_type, query, imdb_id, job_key, search_result, discovered_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(hash) DO UPDATE SET
 				name = excluded.name,
 				size = excluded.size,
@@ -329,12 +344,26 @@ export class MainDB {
 				source_count = excluded.source_count,
 				query = excluded.query,
 				imdb_id = COALESCE(excluded.imdb_id, indexer_feed.imdb_id),
-				job_key = COALESCE(excluded.job_key, indexer_feed.job_key)
+				job_key = COALESCE(excluded.job_key, indexer_feed.job_key),
+				search_result = COALESCE(excluded.search_result, indexer_feed.search_result)
 		`);
 		const now = new Date().toISOString();
 		const insertAll = this.db.transaction((rows: Omit<IndexerFeedRecord, 'discovered_at'>[]) => {
 			for (const r of rows) {
-				stmt.run(r.hash.toLowerCase(), r.name, r.size, r.link, r.provider, r.source_count, r.media_type, r.query, r.imdb_id, r.job_key, now);
+				stmt.run(
+					r.hash.toLowerCase(),
+					r.name,
+					r.size,
+					r.link,
+					r.provider,
+					r.source_count,
+					r.media_type,
+					r.query,
+					r.imdb_id,
+					r.job_key,
+					r.search_result,
+					now
+				);
 			}
 		});
 		insertAll(items);
@@ -380,6 +409,10 @@ export class MainDB {
 			.prepare<[], { job_key: string; n: number }>('SELECT job_key, COUNT(*) AS n FROM indexer_feed WHERE job_key IS NOT NULL GROUP BY job_key')
 			.all();
 		return new Map(rows.map((r) => [r.job_key, r.n]));
+	}
+
+	public getIndexerFeedItem(hash: string): IndexerFeedRecord | undefined {
+		return this.db.prepare<string, IndexerFeedRecord>('SELECT * FROM indexer_feed WHERE hash = ?').get(hash.toLowerCase());
 	}
 
 	public deleteIndexerFeedItem(hash: string): boolean {

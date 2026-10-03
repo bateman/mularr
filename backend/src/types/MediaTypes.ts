@@ -62,8 +62,10 @@ export interface MediaTransfer {
 	provider?: string;
 	/** Resolved absolute path to the file on disk. Populated by MediaProviderService. */
 	filePath?: string;
-	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
+	/** Human-readable source label (e.g. Telegram chat name, Hispashare title). Provider-agnostic. */
 	sourceName?: string;
+	/** Page of the release on the website of the provider it was found on, when it has one. */
+	webUrl?: string;
 	/** Chunk information for the transfer. */
 	chunkInfo?: ChunkInfo;
 	/** Peers currently related to this transfer (download sources). */
@@ -109,6 +111,11 @@ export interface MediaSearchResult {
 	webUrl?: string;
 	/** IMDb id of the title the release belongs to, when the provider knows it. */
 	imdbId?: string;
+	/**
+	 * Everything the provider knew about the release beyond the fields above, in the provider's own shape
+	 * (e.g. the Hispashare title and release). Opaque to the UI; kept with the download's search_result snapshot.
+	 */
+	providerData?: unknown;
 }
 
 export interface MediaSearchResponse {

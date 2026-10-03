@@ -33,6 +33,26 @@ export class MediaSearchService {
 	private searchQueue: Promise<unknown> = Promise.resolve();
 	private _lastInteractiveSearchAt = 0;
 
+	constructor() {
+		// A download is added by hash or link; the result it came from is only known here, so it is attached
+		// to the record right away, before another search displaces it from the history.
+		this.events.on('download.added', ({ hash }) => this.recordSearchResult(hash));
+	}
+
+	/**
+	 * Keeps on the download record a snapshot of the search result it was added from, so Transfers can show
+	 * where the release came from (label, website page) without the frontend carrying that along. Looked up
+	 * in the recent searches first, then in the indexer feed, which still has it for releases the *arr grabs
+	 * from the RSS feed long after the search left the history.
+	 */
+	private recordSearchResult(hash: string): void {
+		const result = this.searchHistory.findByHash(hash);
+		const json = result ? JSON.stringify(result) : (this.db.getIndexerFeedItem(hash)?.search_result ?? null);
+		if (json) {
+			this.db.setDownloadSearchResult(hash, json);
+		}
+	}
+
 	/**
 	 * Fire-and-forget search. `interactive` marks one driven by a client that polls getSearchResults itself
 	 * (the web UI): background searches (see searchAndCollect) hold off while such a search is recent,
@@ -153,6 +173,17 @@ class SearchHistory {
 				delete this.searchesById[entries[i].id];
 			}
 		}
+	}
+
+	/** A result of the current or a kept search, most recent first, by hash (case-insensitive); undefined when none matches. */
+	findByHash(hash: string): MediaSearchResult | undefined {
+		const wanted = hash.toLowerCase();
+		const kept = Object.values(this.searchesById).sort((a, b) => b.timestamp - a.timestamp);
+		for (const entry of this.current ? [this.current, ...kept] : kept) {
+			const found = entry.results[hash] ?? Object.values(entry.results).find((r) => r.hash.toLowerCase() === wanted);
+			if (found) return found;
+		}
+		return undefined;
 	}
 
 	pushResults(results: MediaSearchResult[]) {

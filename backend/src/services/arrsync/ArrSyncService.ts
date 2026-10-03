@@ -332,6 +332,7 @@ export class ArrSyncService {
 			query: job.query,
 			imdb_id: job.imdbId,
 			job_key: jobKey,
+			search_result: JSON.stringify(r),
 		};
 	}
 }

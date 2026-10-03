@@ -9,6 +9,7 @@ import { ClipboardService } from '../../services/ClipboardService';
 import { getFileIcon } from '../../utils/icons';
 import { isVideoFile } from '../../utils/files';
 import { fbytes, formatRemaining } from '../../utils/formats';
+import { sourceInfoContent } from '../../utils/sourceInfo';
 import { RowSelectionManager } from '../../utils/ListManager';
 import { TransferDetailsDialog } from './TransferDetailsDialog';
 import { TransferProgressBar } from './TransferProgressBar';
@@ -225,7 +226,7 @@ export const TransfersRows = componentList<MediaTransfer, TransferListProps>(
 					inner: () => getProviderIcon(t.get().provider),
 					title: () => getProviderName(t.get().provider),
 				},
-				sourceInfoCol: { inner: () => t.get().sourceName || '', title: () => t.get().sourceName || '' },
+				sourceInfoCol: { inner: () => sourceInfoContent(t.get()), title: () => t.get().sourceName || '' },
 				sizeCol: { inner: () => fbytes(t.get().size) },
 				categoryCol: {
 					nodes: {
