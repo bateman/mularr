@@ -29,7 +29,13 @@ export interface AppConfig {
 	port: number;
 	/** Minimum level written to the console; see services/logging/Logger.ts. */
 	logLevel: LogLevel;
-	/** Main SQLite database. The data directory (JWT secret file, indexer DB) is derived from it. In mock mode it lives under the OS temp directory. */
+	/**
+	 * Directory holding everything Mularr persists: the SQLite databases, the JWT secret file and, by default, the
+	 * aMule config dir. The Docker image sets it to /app/data; outside Docker it defaults to dev-data/ at the
+	 * repository root; in mock mode it is a throwaway directory under the OS temp folder.
+	 */
+	dataDir: string;
+	/** Main SQLite database, `database.sqlite` inside dataDir unless the deprecated DATABASE_PATH says otherwise. */
 	databasePath: string;
 	auth: {
 		username?: string;
@@ -52,6 +58,7 @@ export interface AppConfig {
 		portIndex?: number;
 	};
 	amule: {
+		/** amuled config directory (amule.conf, *.met, logfile). Defaults to `amule/` inside dataDir. */
 		configDir: string;
 		/** Environment overrides; when set, the matching Settings field is locked. */
 		incomingDir?: string;
@@ -127,13 +134,27 @@ function loadConfig(): AppConfig {
 	const mockMode = envBool('MOCK_MODE');
 	// Mock mode never notifies a real chat, whatever the environment says
 	const telegramBotToken = mockMode ? undefined : envString('TELEGRAM_BOT_TOKEN');
+	// Single data directory (database.sqlite, indexer.db, jwt-secret, amule/). The Docker image sets DATA_DIR to its
+	// /app/data volume; in the devcontainer it is dev-data/ at the repository root, which .devcontainer/setup-amule.sh
+	// seeds with an amule.conf. DATABASE_PATH predates DATA_DIR: when set it still wins, and the data directory is
+	// the one containing the database as before, so existing deployments keep their layout untouched.
+	const legacyDatabasePath = mockMode ? undefined : envString('DATABASE_PATH');
+	if (legacyDatabasePath) {
+		console.warn(
+			`DATABASE_PATH is deprecated and will be removed in a future release. Set DATA_DIR=${path.dirname(legacyDatabasePath)} instead, and rename the database file to database.sqlite if it is called differently.`
+		);
+	}
+	const dataDir = mockMode
+		? path.join(os.tmpdir(), 'mularr-mock') // DATA_DIR and DATABASE_PATH are ignored on purpose: the mock wipes its data directory on start
+		: legacyDatabasePath
+			? path.dirname(legacyDatabasePath)
+			: (envString('DATA_DIR') ?? path.join(__dirname, '../../dev-data'));
 	return {
 		mockMode,
 		port: envInt('PORT', 8940),
 		logLevel: envEnum('LOG_LEVEL', LOG_LEVELS, 'info'),
-		databasePath: mockMode
-			? path.join(os.tmpdir(), 'mularr-mock', 'database.sqlite') // DATABASE_PATH is ignored on purpose: the mock wipes its data directory on start
-			: (envString('DATABASE_PATH') ?? path.join(__dirname, '../dev-data/database.sqlite')),
+		dataDir,
+		databasePath: legacyDatabasePath ?? path.join(dataDir, 'database.sqlite'),
 		auth: {
 			username: envString('AUTH_USERNAME'),
 			password: envString('AUTH_PASSWORD'),
@@ -147,7 +168,7 @@ function loadConfig(): AppConfig {
 			portIndex: envInt('GLUETUN_PORT_INDEX'),
 		},
 		amule: {
-			configDir: envString('AMULE_CONFIG_DIR') ?? path.join(envString('HOME') ?? '/home/node', '.aMule'),
+			configDir: envString('AMULE_CONFIG_DIR') ?? path.join(dataDir, 'amule'),
 			incomingDir: envString('AMULE_INCOMING_DIR'),
 			tempDir: envString('AMULE_TEMP_DIR'),
 			sharedDirsRecursive: envPathList('AMULE_SHAREDDIR_RECURSIVE'),

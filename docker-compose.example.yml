@@ -22,8 +22,9 @@ services:
         environment:
             # All environment variables are optional, the values specified here are the defaults which will be used if not provided. Set these if you want to customize the behavior or integrate with other services.
 
-            # Path to the SQLite database file. You can change this if you want to store the database in a different location or use an external database (just make sure the path is writable by the container and update the path accordingly).
-            - DATABASE_PATH=/app/data/database.sqlite
+            # Directory where Mularr keeps its data: the SQLite databases, the aMule configuration (amule.conf, known.met, ...) and the JWT secret. Make sure it is backed by a volume (see above) and writable by the container.
+            # DATABASE_PATH (path to the SQLite file) is deprecated: it still works, but logs a warning at startup. Use DATA_DIR instead.
+            - DATA_DIR=/app/data
 
             # Port for the mularr web/api
             - PORT=8940

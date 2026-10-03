@@ -9,6 +9,7 @@ import { MessageRow, TelegramIndexerDB } from './db/TelegramIndexerDB';
 import { MainDB } from './db/MainDB';
 import { TelegramDownloadManager, getDownloadableDocument } from './TelegramDownloadManager';
 import { LoggerFactory } from './logging/Logger';
+import { __APP_CONFIG__ } from '../app-env';
 
 export type AuthStatus = 'disconnected' | 'waiting_code' | 'waiting_password' | 'connected' | 'authenticating';
 
@@ -43,8 +44,7 @@ export class TelegramIndexerService {
 
 	constructor() {
 		// Initialize DB
-		const dbDir = path.dirname(this.mainDb.dbPath);
-		const indexerDbPath = path.join(dbDir, 'indexer.db');
+		const indexerDbPath = path.join(__APP_CONFIG__.dataDir, 'indexer.db');
 		this.db = new TelegramIndexerDB(indexerDbPath);
 
 		this.downloadManager = new TelegramDownloadManager(

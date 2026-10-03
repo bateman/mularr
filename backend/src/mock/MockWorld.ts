@@ -119,7 +119,7 @@ function inferSearchKind(query: string): SearchKind | null {
 export class MockWorld {
 	readonly rng = new MockRandom(F.MOCK_SEED);
 	/** Everything the mock pretends to write lives under the throwaway data directory (see app-env.ts). */
-	readonly dataDir = path.dirname(__APP_CONFIG__.databasePath);
+	readonly dataDir = __APP_CONFIG__.dataDir;
 	readonly incomingDir = path.join(this.dataDir, 'incoming');
 	readonly tempDir = path.join(this.incomingDir, '.incomplete');
 	readonly libraryDir = path.join(this.dataDir, 'library');

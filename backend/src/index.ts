@@ -54,9 +54,9 @@ process.on('unhandledRejection', (reason) => {
 logger.info(`Starting Mularr v${__APP_MANIFEST__.version}...`);
 
 const app = express();
-const { port, databasePath: dbPath, mockMode } = __APP_CONFIG__;
+const { port, dataDir, databasePath: dbPath, mockMode } = __APP_CONFIG__;
 if (mockMode) {
-	logger.warn(`MOCK_MODE is enabled: serving generated data, nothing connects to aMule, Gluetun or Telegram. Data directory: ${path.dirname(dbPath)}`);
+	logger.warn(`MOCK_MODE is enabled: serving generated data, nothing connects to aMule, Gluetun or Telegram. Data directory: ${dataDir}`);
 }
 
 app.use(cors());
@@ -71,7 +71,7 @@ app.use(express.urlencoded({ extended: true }));
 container.register(AppEvents, new AppEvents());
 
 // Initialize Auth Service (must be first so middleware can use it)
-const authService = new AuthService(path.dirname(dbPath));
+const authService = new AuthService(dataDir);
 container.register(AuthService, authService);
 if (authService.isAuthEnabled()) {
 	logger.info('Authentication is enabled.');

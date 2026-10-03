@@ -132,6 +132,8 @@ Mularr is built primarily with TypeScript.
 If you want to contribute or run Mularr you need docker & VS Code devcontainers.
 Open the project in the devcontainer and it automatically installs the needed dependencies.
 
+All runtime data (SQLite database, aMule config and downloads) is kept in `dev-data/` at the repository root, which is gitignored and mirrors the `/app/data` volume of the production image.
+
 Then you can start the application in dev mode:
 
 ### 1. Backend Setup
