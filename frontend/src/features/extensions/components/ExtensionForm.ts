@@ -52,6 +52,10 @@ export const ExtensionForm = component<ExtensionFormProps>(({ type, extension, o
 
 	const handle: ConfigFormHandle = {};
 	const configForm = createConfigForm({ type, extension, handle });
+	// The config form fills the handle when it mounts, which happens while this fragment renders, after the
+	// bindings below were built. Checked once that pass has finished, so the Test button shows up when supported.
+	const canTest = signal(false);
+	queueMicrotask(() => canTest.set(!!handle.test));
 
 	const save = async () => {
 		if (busy.get()) return;
@@ -96,7 +100,7 @@ export const ExtensionForm = component<ExtensionFormProps>(({ type, extension, o
 			inner: () => status.get()?.text ?? '',
 			style: { color: () => (status.get()?.ok === false ? '#ff4d4d' : '') },
 		},
-		btnTest: { onclick: test, disabled: () => busy.get(), style: { display: handle.test ? '' : 'none' } },
+		btnTest: { onclick: test, disabled: () => busy.get(), style: { display: () => (canTest.get() ? '' : 'none') } },
 		btnSave: { onclick: save, disabled: () => busy.get() },
 		btnCancel: { onclick: onCancel },
 	});
