@@ -51,7 +51,7 @@ COPY install-amule-gh-release.sh /tmp/install-amule.sh
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	tini \
 	procps \
-	&& bash /tmp/install-amule.sh 3.0.1 \
+	&& bash /tmp/install-amule.sh 3.1.0 \
 	&& rm /tmp/install-amule.sh \
 	&& rm -rf /var/lib/apt/lists/*
 
