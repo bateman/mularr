@@ -7,3 +7,4 @@ build/
 database.sqlite
 *.bak
 dev-data/
+devcontainer-lock.json
