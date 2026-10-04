@@ -1,26 +1,25 @@
-<div class="telegram-config">
-
-	<!-- Status Bar -->
-	<div class="ui-panel-sunken">
-		<div class="status-bar">
-			<span style="font-weight: bold;">Status:</span>
-			<span data-cb="statusBadge" style="text-transform: capitalize;">Detecting...</span>
-			<div style="flex: 1;"></div>
-			<span data-cb="phoneDisplay" style="display: none;">
-				Phone: <span data-cb="phoneText" style="font-weight: bold;"></span>
-			</span>
-		</div>
-
-		<!-- Error Banner -->
-		<div class="error-banner" data-cb="errorBanner"></div>
-
-		<!-- Toolbar -->
-		<div class="toolbar">
-			<button class="ui-btn" data-cb="btnRefresh">Refresh</button>
-			<div style="flex: 1;"></div>
-			<button class="ui-btn" data-cb="btnLogout">Logout</button>
-		</div>
+<div class="telegram-view ui-feature-layout-rows">
+	<div class="ui-panel-raised ui-feature-topbar">
+		<span style="font-weight: bold; margin-left: 5px;">Telegram</span>
+		<span class="status-text">
+			Status: <span data-cb="statusBadge" style="text-transform: capitalize;">Detecting...</span>
+		</span>
+		<span data-cb="phoneDisplay" class="status-text" style="display: none;">
+			Phone: <span data-cb="phoneText" style="font-weight: bold;"></span>
+		</span>
+		<div style="flex: 1;"></div>
+		<!-- Whether searches reach Telegram -->
+		<span class="ui-inline-input-block">
+			<span>Search provider:</span>
+			<span data-cb="searchEnabledState" style="font-weight: bold;"></span>
+			<button class="ui-btn" data-cb="btnToggleSearchEnabled"></button>
+		</span>
+		<button class="ui-btn" data-cb="btnRefresh">Refresh</button>
+		<button class="ui-btn" data-cb="btnLogout">Logout</button>
 	</div>
+
+	<!-- Error Banner -->
+	<div class="error-banner" data-cb="errorBanner"></div>
 
 	<!-- Content Area -->
 	<div class="ui-panel-raised content-area">
@@ -90,7 +89,7 @@
 					</thead>
 					<tbody data-cb="chatsList">
 						<tr data-cb="chatRow">
-							<td data-cb="chatName" class="is-mobile-primary" style="max-width: 350px;">
+							<td data-cb="chatName" class="is-mobile-primary">
 								<span data-cb="chatNameText"></span>
 								<div class="mobile-info-block" data-cb="mobileInfo">
 									<div class="mobile-info-row">

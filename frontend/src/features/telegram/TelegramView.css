@@ -1,17 +1,18 @@
-/* Scoped styles for Telegram Config UI */
-
-.telegram-config {
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
+.telegram-view {
 	height: 100%;
 	overflow: hidden;
 
-	.status-bar {
-		padding: 5px 8px;
-		display: flex;
-		align-items: center;
-		gap: 10px;
+	.status-text {
+		margin-left: 10px;
+		white-space: nowrap;
+	}
+
+	.ui-feature-topbar {
+		flex-wrap: wrap;
+
+		.ui-btn {
+			min-width: 80px;
+		}
 	}
 
 	.error-banner {
@@ -19,24 +20,13 @@
 		background: #ffcccc;
 		color: #cc0000;
 		border: 1px solid #cc0000;
-		margin: 5px;
-	}
-
-	.toolbar {
-		padding: 5px;
-		display: flex;
-		gap: 5px;
-		border-top: 1px solid var(--ui-input-border-color);
-		background: #9dd1ff0f;
-
-		.ui-btn {
-			min-width: 80px;
-		}
 	}
 
 	.content-area {
 		flex: 1;
+		min-height: 0;
 		padding: 10px;
+		overflow-y: auto;
 		background: var(--ui-face);
 	}
 
@@ -77,7 +67,6 @@
 	.connected-panel {
 		height: 100%;
 		min-height: 200px;
-		max-height: min(700px, 58vh);
 		display: flex;
 		flex-direction: column;
 
@@ -103,39 +92,6 @@
 					}
 				}
 			}
-		}
-	}
-
-	.badge {
-		padding: 2px 6px;
-		border-radius: 4px;
-		font-size: 11px;
-		font-weight: bold;
-		color: white;
-		background-color: #888;
-		border: 1px solid rgba(0, 0, 0, 0.2);
-		display: inline-block;
-		text-transform: capitalize;
-
-		&.connected {
-			background-color: #008000;
-		}
-
-		&.disconnected {
-			background-color: #cc0000;
-		}
-
-		&.waiting_code,
-		&.waiting_password {
-			background-color: #ff8000;
-		}
-
-		&.success {
-			background-color: #008000;
-		}
-
-		&.secondary {
-			background-color: #888;
 		}
 	}
 }

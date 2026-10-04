@@ -46,6 +46,28 @@ export interface MessageRow {
 /** Identifies one indexed message. */
 export type MessageRef = Pick<MessageRow, 'chat_id' | 'message_id'>;
 
+/**
+ * The Telegram account this instance signs in with. One row (see the `account` table); every field but
+ * `searchEnabled` is null until the first sign-in stores it.
+ */
+export interface TelegramAccount {
+	apiId: number | null;
+	apiHash: string | null;
+	/** Serialized client session; null while signed out. */
+	session: string | null;
+	/** Whether searches reach the Telegram index. Independent of being signed in. */
+	searchEnabled: boolean;
+}
+
+interface AccountRow {
+	api_id: number | null;
+	api_hash: string | null;
+	session: string | null;
+	search_enabled: number;
+}
+
+const DEFAULT_ACCOUNT: TelegramAccount = { apiId: null, apiHash: null, session: null, searchEnabled: true };
+
 export interface ActiveDownloadRow {
 	hash: string;
 	chat_id: string;
@@ -152,6 +174,17 @@ export class TelegramIndexerDB {
 			// Column already exists — ignore
 		}
 
+		// The account this instance signs in with: a single row, see TelegramAccount
+		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS account (
+				id INTEGER PRIMARY KEY CHECK (id = 1),
+				api_id INTEGER,
+				api_hash TEXT,
+				session TEXT,
+				search_enabled INTEGER NOT NULL DEFAULT 1
+			);
+		`);
+
 		// Operational per-message metadata that plays no part in search. Kept apart from
 		// messages_content so writing it never fires the FTS update trigger; add here any
 		// future field that should not touch the index. All columns nullable: a row may
@@ -255,6 +288,30 @@ export class TelegramIndexerDB {
 			END;
 		`);
 	}
+
+	// ── Account ───────────────────────────────────────────────────────────────
+
+	/** The stored account, or the defaults (nothing stored, search enabled) before the first sign-in. */
+	public getAccount(): TelegramAccount {
+		const row = this.db.prepare('SELECT api_id, api_hash, session, search_enabled FROM account WHERE id = 1').get() as AccountRow | undefined;
+		if (!row) return { ...DEFAULT_ACCOUNT };
+		return { apiId: row.api_id, apiHash: row.api_hash, session: row.session, searchEnabled: row.search_enabled === 1 };
+	}
+
+	/** Stores the given fields of the account, keeping the others as they are. */
+	public updateAccount(patch: Partial<TelegramAccount>) {
+		const next = { ...this.getAccount(), ...patch };
+		this.db
+			.prepare(
+				`INSERT INTO account (id, api_id, api_hash, session, search_enabled)
+				 VALUES (1, ?, ?, ?, ?)
+				 ON CONFLICT(id) DO UPDATE SET api_id = excluded.api_id, api_hash = excluded.api_hash,
+				 	session = excluded.session, search_enabled = excluded.search_enabled`
+			)
+			.run(next.apiId, next.apiHash, next.session, next.searchEnabled ? 1 : 0);
+	}
+
+	// ── Chats ─────────────────────────────────────────────────────────────────
 
 	public registerChat(id: string, title: string, type: string) {
 		this.db

@@ -126,6 +126,11 @@ export class TelegramMediaProvider implements IMediaProvider {
 	private readonly events = container.get(AppEvents);
 	private readonly dirHelper = new TelegramDownloadDirectoryHelper();
 
+	/** Switched on from the Telegram view; the indexer returns nothing while it is off. */
+	isAvailable(): boolean {
+		return this.indexer.isSearchEnabled();
+	}
+
 	canHandleDownload(link: string): boolean {
 		return link.startsWith('telegram:');
 	}

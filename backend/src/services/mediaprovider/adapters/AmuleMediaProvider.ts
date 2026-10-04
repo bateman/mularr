@@ -8,6 +8,11 @@ export class AmuleMediaProvider implements IMediaProvider {
 	readonly providerId = 'amule';
 	private readonly amuleService = container.get(AmuleService);
 
+	/** aMule is what Mularr runs on, so it always takes part. */
+	isAvailable(): boolean {
+		return true;
+	}
+
 	canHandleDownload(link: string): boolean {
 		return !link.startsWith('telegram:');
 	}

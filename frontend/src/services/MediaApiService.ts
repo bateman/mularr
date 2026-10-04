@@ -1,6 +1,14 @@
 import { BaseApiService } from './BaseApiService';
 import type { SuccessResponse } from './AmuleApiService';
-import type { MediaCategory, MediaTransfer, MediaTransfersResponse, MediaSearchResult, MediaSearchResponse, MediaSearchStatusResponse } from './apiTypes';
+import type {
+	MediaCategory,
+	MediaTransfer,
+	MediaTransfersResponse,
+	MediaSearchResult,
+	MediaSearchResponse,
+	MediaSearchStatusResponse,
+	SearchProviderId,
+} from './apiTypes';
 
 export type { MediaCategory, SuccessResponse, MediaTransfer, MediaTransfersResponse, MediaSearchResult, MediaSearchResponse, MediaSearchStatusResponse };
 export type { ChunkStatus, ChunkInfo, TransferSource, TransferSourceNameCount } from './apiTypes';
@@ -56,6 +64,11 @@ export class MediaApiService extends BaseApiService {
 	}
 
 	// ---- Search ----------------------------------------------------------------
+
+	/** Providers a search reaches right now: aMule always, the others while their service is switched on. */
+	async getSearchProviders(): Promise<SearchProviderId[]> {
+		return this.request<SearchProviderId[]>('/search-providers');
+	}
 
 	async search(query: string, type: string): Promise<SuccessResponse> {
 		return this.request<SuccessResponse>('/search', {

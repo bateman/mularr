@@ -10,7 +10,7 @@ import { parseEd2kLink } from '../eD2kTools';
 import { AmuleMediaProvider } from './adapters/AmuleMediaProvider';
 import { TelegramMediaProvider } from './adapters/TelegramMediaProvider';
 import { HispashareMediaProvider } from './adapters/HispashareMediaProvider';
-import type { MediaCategory, IMediaProvider, MediaSearchResult, MediaTransfer, MediaTransfersResponse } from './types';
+import type { MediaCategory, IMediaProvider, MediaSearchResult, MediaTransfer, MediaTransfersResponse, SearchProviderId } from './types';
 import { LoggerFactory } from '../logging/Logger';
 
 /**
@@ -38,6 +38,11 @@ export class MediaProviderService {
 		// Search-only (its files are downloaded by aMule) and reaches the internet, so it is left out in mock mode
 		if (!__APP_CONFIG__.mockMode) this.providers.push(new HispashareMediaProvider());
 		this.providers.push(new AmuleMediaProvider());
+	}
+
+	/** Ids of the providers a search reaches right now (see IMediaProvider.isAvailable), in fan-out order. */
+	public getAvailableSearchProviders(): SearchProviderId[] {
+		return this.providers.filter((p) => p.isAvailable()).map((p) => p.providerId as SearchProviderId);
 	}
 
 	// ---- Transfers -------------------------------------------------------------

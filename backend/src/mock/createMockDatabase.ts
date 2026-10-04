@@ -41,14 +41,6 @@ function seedDownloads(db: MainDB, world: MockWorld): void {
 
 function seedExtensions(db: MainDB): void {
 	db.addExtension({
-		name: 'Telegram Integration',
-		url: 'local',
-		type: 'telegram_indexer',
-		enabled: 1,
-		// A stored session is what makes the mock indexer start as "connected"
-		config: JSON.stringify({ apiId: 123456, apiHash: '0123456789abcdef0123456789abcdef', session: 'mock-session' }),
-	});
-	db.addExtension({
 		name: 'Notify Home Assistant',
 		url: 'https://home.example.net/api/webhook/mularr',
 		type: 'webhook',

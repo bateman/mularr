@@ -1,7 +1,6 @@
 import { inject, component, signal } from 'chispa';
 import { ExtensionsApiService, Extension, EXTENSION_TYPES, ExtensionType } from '../../services/ExtensionsApiService';
 import { DialogService } from '../../services/DialogService';
-import { TelegramConfig } from './components/TelegramConfig';
 import { ExtensionTypePicker } from './components/ExtensionTypePicker';
 import { ExtensionForm } from './components/ExtensionForm';
 import tpl from './ExtensionsView.html';
@@ -44,14 +43,6 @@ export const ExtensionsView = component(() => {
 		}
 	};
 
-	const openTelegramDialog = () => {
-		dialogService.open({
-			title: 'Telegram Configuration',
-			width: '700px',
-			render: () => TelegramConfig(),
-		});
-	};
-
 	/**
 	 * Adding is two steps: pick the type, then fill the complete form of that type. The extension is
 	 * created, with its settings, only when that form is saved.
@@ -82,8 +73,6 @@ export const ExtensionsView = component(() => {
 						await api.addExtension({ name, url, type, enabled: enabled ? 1 : 0, config });
 						await refresh();
 						close();
-						// Telegram signs in through its own flow once the extension exists
-						if (type === 'telegram_indexer') openTelegramDialog();
 					},
 					onCancel: close,
 				}),
@@ -110,12 +99,11 @@ export const ExtensionsView = component(() => {
 	};
 
 	const openConfigDialog = (ext: Extension) => {
-		if (ext.type === 'telegram_indexer') openTelegramDialog();
-		else if (hasConfigDialog(ext)) openEditDialog(ext);
+		if (hasConfigDialog(ext)) openEditDialog(ext);
 	};
 
 	// Every extension that points to a URL must stay editable after creation
-	const hasConfigDialog = (ext: Extension) => ext.type === 'telegram_indexer' || !!EXTENSION_TYPES[ext.type]?.requiresUrl;
+	const hasConfigDialog = (ext: Extension) => !!EXTENSION_TYPES[ext.type]?.requiresUrl;
 
 	refresh();
 

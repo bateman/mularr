@@ -59,54 +59,53 @@ export class TelegramIndexerService {
 			status: this.authStatus,
 			// phoneNumber: this.tempPhone, // For UI feedback
 			user: this.client && this.authStatus === 'connected' ? await this.client.getMe() : null, // Return user info if connected
+			searchEnabled: this.isSearchEnabled(),
 		};
 	}
 
 	public async start() {
+		this.migrateLegacyExtensionRow();
+
 		// Try to recover session from DB
-		const config = this.getExtensionConfig();
-
-		if (config && config.apiId && config.apiHash) {
-			// Restore session if available
-			if (config.session) {
-				this.logger.info('Restoring Telegram session from DB...');
-				await this.connectClient(config.apiId, config.apiHash, config.session);
-			}
+		const account = this.db.getAccount();
+		if (account.apiId && account.apiHash && account.session) {
+			this.logger.info('Restoring Telegram session from DB...');
+			await this.connectClient(account.apiId, account.apiHash, account.session);
 		}
 	}
 
-	private getExtensionConfig(): any {
+	/**
+	 * Until 2026-10 the account was kept as a 'telegram_indexer' row of the extensions table. Moves it into
+	 * the indexer DB and drops the row, so installs upgraded from that layout keep their session and settings.
+	 */
+	private migrateLegacyExtensionRow() {
 		const ext = this.mainDb.getExtensionByType('telegram_indexer');
-		if (ext && ext.config) {
-			try {
-				return JSON.parse(ext.config);
-			} catch (e) {
-				return {};
-			}
+		if (!ext) return;
+		let config: any = {};
+		try {
+			config = JSON.parse(ext.config || '{}');
+		} catch {
+			config = {};
 		}
-		return {};
+		this.db.updateAccount({
+			apiId: typeof config.apiId === 'number' ? config.apiId : null,
+			apiHash: typeof config.apiHash === 'string' ? config.apiHash : null,
+			session: typeof config.session === 'string' ? config.session : null,
+			searchEnabled: !!ext.enabled,
+		});
+		this.mainDb.deleteExtension(ext.id);
+		this.logger.info('Moved the Telegram account from the extensions table into the indexer DB');
 	}
 
-	private saveExtensionConfig(newConfig: any) {
-		// Ensure extension exists
-		let ext = this.mainDb.getExtensionByType('telegram_indexer');
-		if (!ext) {
-			const id = this.mainDb.addExtension({
-				name: 'Telegram Integration',
-				url: 'local',
-				type: 'telegram_indexer',
-				enabled: 1,
-				config: '{}',
-			});
-			ext = this.mainDb.getExtensionById(Number(id));
-		}
+	// -- Search provider flag --
 
-		if (!ext) return; // Should not happen
+	/** Whether searches reach the Telegram index; see TelegramAccount.searchEnabled. */
+	public isSearchEnabled(): boolean {
+		return this.db.getAccount().searchEnabled;
+	}
 
-		const currentConfig = this.getExtensionConfig();
-		const finalConfig = { ...currentConfig, ...newConfig };
-
-		this.mainDb.updateExtensionConfig(ext.id, JSON.stringify(finalConfig));
+	public setSearchEnabled(enabled: boolean) {
+		this.db.updateAccount({ searchEnabled: enabled });
 	}
 
 	// -- Auth Flow Methods --
@@ -135,7 +134,7 @@ export class TelegramIndexerService {
 			this.authStatus = 'waiting_code';
 
 			// Save initial config
-			this.saveExtensionConfig({ apiId, apiHash });
+			this.db.updateAccount({ apiId, apiHash });
 		} catch (e) {
 			this.authStatus = 'disconnected';
 			this.client = null;
@@ -174,7 +173,7 @@ export class TelegramIndexerService {
 		}
 
 		try {
-			const { apiId, apiHash } = this.getExtensionConfig();
+			const { apiId, apiHash } = this.db.getAccount();
 			if (!apiId || !apiHash) throw new Error('Missing Telegram API credentials');
 			await this.client.signInWithPassword(
 				{ apiId, apiHash },
@@ -195,7 +194,7 @@ export class TelegramIndexerService {
 	private onLoginSuccess() {
 		this.authStatus = 'connected';
 		const session = this.client!.session.save() as unknown as string;
-		this.saveExtensionConfig({ session });
+		this.db.updateAccount({ session });
 		this.logger.info('Telegram login successful!');
 		this.downloadManager.resumeActiveDownloads().catch((e) => this.logger.error('Error resuming active downloads:', e));
 		this.runIndexingLoop();
@@ -209,7 +208,7 @@ export class TelegramIndexerService {
 		this.authStatus = 'disconnected';
 
 		// Clear session from DB but keep API config
-		this.saveExtensionConfig({ session: null });
+		this.db.updateAccount({ session: null });
 	}
 
 	// -- Chat Management --
@@ -526,8 +525,7 @@ export class TelegramIndexerService {
 	}
 
 	public async search(query: string, limit: number = 50, cursorId: number = 0) {
-		const ext = this.mainDb.getExtensionByType('telegram_indexer');
-		if (!ext || !ext.enabled) {
+		if (!this.isSearchEnabled()) {
 			return { results: [], nextCursor: null };
 		}
 		const { rows, nextCursor } = await this.db.searchFiles(query, limit, cursorId);

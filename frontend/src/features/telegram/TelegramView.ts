@@ -1,8 +1,8 @@
 import { inject, component, signal, refBindInput, computed, componentList } from 'chispa';
-import { TelegramApiService, type TelegramUser, type TelegramChat } from '../../../services/TelegramApiService';
-import { DialogService } from '../../../services/DialogService';
-import tpl from './TelegramConfig.html';
-import './TelegramConfig.css';
+import { TelegramApiService, type TelegramUser, type TelegramChat } from '../../services/TelegramApiService';
+import { DialogService } from '../../services/DialogService';
+import tpl from './TelegramView.html';
+import './TelegramView.css';
 
 interface ChatRowProps {
 	onToggleChat: (chat: TelegramChat) => void;
@@ -50,7 +50,8 @@ const ChatsRows = componentList<TelegramChat, ChatRowProps>(
 	(c) => c.id
 );
 
-export const TelegramConfig = component(() => {
+/** Telegram account: sign-in flow, the chats that get indexed, and whether Telegram takes part in searches. */
+export const TelegramView = component(() => {
 	// Services
 	const api = inject(TelegramApiService);
 	const dialogs = inject(DialogService);
@@ -61,6 +62,7 @@ export const TelegramConfig = component(() => {
 	const chats = signal<TelegramChat[]>([]);
 	const loading = signal(false);
 	const errorMessage = signal('');
+	const searchEnabled = signal(true);
 
 	// Input Signals
 	const apiId = signal('');
@@ -92,6 +94,7 @@ export const TelegramConfig = component(() => {
 			const newStatus = res.status || 'disconnected';
 			authStatus.set(newStatus);
 			user.set(res.user ?? null);
+			searchEnabled.set(res.searchEnabled);
 
 			if (newStatus === 'connected') {
 				loadChats();
@@ -162,6 +165,15 @@ export const TelegramConfig = component(() => {
 		}
 	};
 
+	const toggleSearchEnabled = async () => {
+		try {
+			await api.setSearchEnabled(!searchEnabled.get());
+			await refreshStatus();
+		} catch (e: any) {
+			errorMessage.set(e.message || 'Error updating the search provider');
+		}
+	};
+
 	// Computed properties
 	const isConnected = computed(() => authStatus.get() === 'connected');
 	const isDisconnected = computed(() => authStatus.get() === 'disconnected');
@@ -186,6 +198,15 @@ export const TelegramConfig = component(() => {
 		btnLogout: {
 			onclick: logout,
 			style: { display: () => (isConnected.get() ? '' : 'none') },
+		},
+
+		searchEnabledState: {
+			inner: () => (searchEnabled.get() ? 'Enabled' : 'Disabled'),
+			style: { color: () => (searchEnabled.get() ? '#008000' : '#800000') },
+		},
+		btnToggleSearchEnabled: {
+			onclick: toggleSearchEnabled,
+			inner: () => (searchEnabled.get() ? 'Disable' : 'Enable'),
 		},
 
 		errorBanner: {

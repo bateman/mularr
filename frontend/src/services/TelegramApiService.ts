@@ -11,6 +11,8 @@ export interface TelegramUser {
 export interface TelegramStatus {
 	status: 'connected' | 'disconnected' | 'waiting_code' | 'waiting_password';
 	user?: TelegramUser;
+	/** Whether searches reach the Telegram index; independent of being signed in. */
+	searchEnabled: boolean;
 }
 
 export interface TelegramChat {
@@ -53,6 +55,13 @@ export class TelegramApiService extends BaseApiService {
 	async logout(): Promise<{ success: boolean }> {
 		return this.request<{ success: boolean }>('/logout', {
 			method: 'POST',
+		});
+	}
+
+	async setSearchEnabled(enabled: boolean): Promise<{ success: boolean }> {
+		return this.request<{ success: boolean }>('/search-enabled', {
+			method: 'PUT',
+			body: JSON.stringify({ enabled }),
 		});
 	}
 

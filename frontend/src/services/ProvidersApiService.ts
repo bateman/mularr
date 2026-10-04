@@ -1,5 +1,4 @@
 import type { SearchProviderId } from './apiTypes';
-import type { Extension } from './ExtensionsApiService';
 
 export type { SearchProviderId };
 
@@ -52,16 +51,4 @@ export function getProviderIcon(provider?: string) {
 		return span;
 	}
 	return meta?.icon ?? '❓';
-}
-
-/**
- * Providers a search reaches, derived from the extensions: aMule is always there, the others only while
- * the extension that configures them is enabled.
- */
-export function getAvailableSearchProviders(extensions: Extension[]): SearchProviderId[] {
-	const enabled = (type: string) => extensions.some((x) => x.type === type && !!x.enabled);
-	const providers: SearchProviderId[] = ['amule'];
-	if (enabled('telegram_indexer')) providers.push('telegram');
-	if (enabled('hispashare')) providers.push('hispashare');
-	return providers;
 }

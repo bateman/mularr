@@ -25,6 +25,14 @@ export class MediaProviderController {
 		}
 	};
 
+	getSearchProviders = (req: Request, res: Response) => {
+		try {
+			res.json(this.service.getAvailableSearchProviders());
+		} catch (e: any) {
+			res.status(500).json({ error: e.message });
+		}
+	};
+
 	startSearch = async (req: Request, res: Response) => {
 		try {
 			const { query, type } = req.body;

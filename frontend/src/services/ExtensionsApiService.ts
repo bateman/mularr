@@ -1,6 +1,6 @@
 import { BaseApiService } from './BaseApiService';
 
-export type ExtensionType = /*'validator' | 'enhanced_search' |*/ 'webhook' | 'telegram_indexer' | 'media_previewer' | 'sonarr' | 'radarr' | 'hispashare';
+export type ExtensionType = /*'validator' | 'enhanced_search' |*/ 'webhook' | 'media_previewer' | 'sonarr' | 'radarr' | 'hispashare';
 
 export interface Extension {
 	id: number;
@@ -15,7 +15,6 @@ export const EXTENSION_TYPES: Record<ExtensionType, { label: string; requiresUrl
 	// validator: { label: 'Validator', requiresUrl: true },
 	// enhanced_search: { label: 'Enhanced Search', requiresUrl: false },
 	webhook: { label: 'Webhook', requiresUrl: true },
-	telegram_indexer: { label: 'Telegram Indexer', requiresUrl: false },
 	media_previewer: { label: 'Media Previewer', requiresUrl: true },
 	sonarr: { label: 'Sonarr', requiresUrl: true },
 	radarr: { label: 'Radarr', requiresUrl: true },

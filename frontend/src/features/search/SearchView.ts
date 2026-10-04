@@ -8,8 +8,7 @@ import { sourceInfoContent } from '../../utils/sourceInfo';
 import { DialogService } from '../../services/DialogService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { MediaApiService, MediaSearchResult } from '../../services/MediaApiService';
-import { ExtensionsApiService } from '../../services/ExtensionsApiService';
-import { getAvailableSearchProviders, getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
+import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
 import { ContextMenuItem, ContextMenuService } from '../../services/ContextMenuService';
 import { ClipboardService } from '../../services/ClipboardService';
 import { ColumnsMenuService } from '../../services/ColumnsMenuService';
@@ -189,13 +188,12 @@ export const SearchView = component(() => {
 		prefs.set('search.type', searchType.get());
 	});
 
-	// Provider filter: one option per search provider, shown only once an extension adds a second one to aMule
+	// Provider filter: one option per search provider, shown only once a second one joins aMule
 	const providerFilter = signal('all');
 	const providerFilterOptions = signal<SelectOption[]>([]);
-	inject(ExtensionsApiService)
-		.getExtensions()
-		.then((list) => {
-			const providers = getAvailableSearchProviders(list);
+	inject(MediaApiService)
+		.getSearchProviders()
+		.then((providers) => {
 			if (providers.length > 1)
 				providerFilterOptions.set([{ value: 'all', label: 'All' }, ...providers.map((p) => ({ value: p, label: getProviderName(p) }))]);
 		})

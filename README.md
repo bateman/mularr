@@ -10,7 +10,7 @@
 
 **Mularr** is a powerful integration for **aMule** that provides a functional web interface with a nostalgia-infused retro touch. It bridges the gap between classic P2P and modern automation tools by offering **qBittorrent-compatible APIs** and **Torznab indexers**, making it seamless to use aMule with apps like Sonarr and Radarr.
 
-It also includes an extension to use the **Telegram Network** as a download provider. This requires a real account (not a bot) to access groups/channels with media files.
+It can also use the **Telegram Network** as a download provider, set up from its own **Telegram** section. This requires a real account (not a bot) to access groups/channels with media files.
 
 <p align="center">
   <img src="https://games.copinstar.com/img/mularr/screenshots/dashboard-xp.png" alt="Mularr dashboard (Windows XP theme)" width="49%">

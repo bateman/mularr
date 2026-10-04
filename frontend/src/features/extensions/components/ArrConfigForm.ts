@@ -6,13 +6,8 @@ import {
 	parseArrConfig,
 	type ArrExtensionConfig,
 } from '../../../services/ExtensionsApiService';
-import {
-	SEARCH_PROVIDER_IDS,
-	getAvailableSearchProviders,
-	getProviderIcon,
-	getProviderName,
-	type SearchProviderId,
-} from '../../../services/ProvidersApiService';
+import { SEARCH_PROVIDER_IDS, getProviderIcon, getProviderName, type SearchProviderId } from '../../../services/ProvidersApiService';
+import { MediaApiService } from '../../../services/MediaApiService';
 import type { ConfigFormProps, ConfigFormValues } from './ConfigForm';
 import tpl from './ArrConfigForm.html';
 
@@ -29,12 +24,12 @@ export const ArrConfigForm = component<ConfigFormProps>(({ type, extension, hand
 	const apiKey = signal(stored.apiKey);
 	const interval = signal(String(stored.intervalMinutes));
 
-	// Providers the sync can use right now, from the extensions; empty until they are loaded. A config saved
-	// without a selection (or a new extension) starts with all of them checked.
+	// Providers the sync can use right now; empty until they are loaded. A config saved without a selection
+	// (or a new extension) starts with all of them checked.
 	const availableProviders = signal<SearchProviderId[]>([]);
 	const selectedProviders = new Set<string>(stored.searchProviders ?? []);
-	api.getExtensions()
-		.then((list) => getAvailableSearchProviders(list))
+	inject(MediaApiService)
+		.getSearchProviders()
 		.catch(() => [...SEARCH_PROVIDER_IDS])
 		.then((ids) => {
 			if (stored.searchProviders === undefined) ids.forEach((id) => selectedProviders.add(id));

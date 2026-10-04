@@ -24,7 +24,7 @@ export interface ExtensionFormProps {
 	onCancel: () => void;
 }
 
-/** Type-specific form; null for types with nothing to configure at creation (Telegram sets itself up afterwards). */
+/** Type-specific form; null for types with nothing to configure at creation. */
 function createConfigForm(props: ConfigFormProps) {
 	if (isArrExtensionType(props.type)) return ArrConfigForm(props);
 	switch (props.type) {

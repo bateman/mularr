@@ -8,6 +8,7 @@ import { SettingsView } from './features/settings/SettingsView';
 import { CategoriesView } from './features/categories/CategoriesView';
 import { ExtensionsView } from './features/extensions/ExtensionsView';
 import { IndexerFeedView } from './features/indexerfeed/IndexerFeedView';
+import { TelegramView } from './features/telegram/TelegramView';
 
 export const routes: Route[] = [
 	{ path: '/', component: DashboardView },
@@ -17,6 +18,7 @@ export const routes: Route[] = [
 	{ path: '/search', component: SearchView },
 	{ path: '/shared', component: SharedView },
 	{ path: '/indexer-feed', component: IndexerFeedView },
+	{ path: '/telegram', component: TelegramView },
 	{ path: '/extensions', component: ExtensionsView },
 	{ path: '/categories', component: CategoriesView },
 	{ path: '/settings', component: SettingsView },

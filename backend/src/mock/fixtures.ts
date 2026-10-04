@@ -8,7 +8,7 @@
  * the user's own recordings. No commercial titles, not even invented ones, and no scene-release formats
  * (BluRay/WEB-DL rips, release-group tags, "Setup.exe" installers).
  */
-import type { Chat } from '../services/db/TelegramIndexerDB';
+import type { Chat, TelegramAccount } from '../services/db/TelegramIndexerDB';
 
 /** Seed of the shared PRNG (see MockRandom). Change it to get a different, equally stable dataset. */
 export const MOCK_SEED = 20260912;
@@ -268,6 +268,14 @@ export const IP_DETAILS = {
 };
 
 export const TELEGRAM_USER = { id: 123456789, firstName: 'Ada', lastName: 'Mockwell', username: 'ada_mockwell', phone: '34600123456' };
+
+/** Account the mock indexer starts with; the stored session is what makes it start as "connected". */
+export const TELEGRAM_ACCOUNT: TelegramAccount = {
+	apiId: 123456,
+	apiHash: '0123456789abcdef0123456789abcdef',
+	session: 'mock-session',
+	searchEnabled: true,
+};
 
 export const TELEGRAM_CHATS: Chat[] = [
 	{ id: '-1001234567890', title: 'Open Source ISOs', type: 'channel', indexing_enabled: 1 },

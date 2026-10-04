@@ -53,6 +53,12 @@ export interface SearchCriteria {
 export interface IMediaProvider {
 	readonly providerId: string;
 
+	/**
+	 * Whether searches reach this provider right now (its service is configured and switched on). Listed to
+	 * the UI as the providers one can pick; an unavailable provider answers searches with no results.
+	 */
+	isAvailable(): boolean;
+
 	/** Return true if this provider should handle the given link/hash. */
 	canHandleDownload(link: string): boolean;
 

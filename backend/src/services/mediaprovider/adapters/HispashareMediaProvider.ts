@@ -27,6 +27,10 @@ export class HispashareMediaProvider implements IMediaProvider {
 	private results: MediaSearchResult[] = [];
 	private searchDone = true;
 
+	isAvailable(): boolean {
+		return this.getClient() !== null;
+	}
+
 	canHandleDownload(_link: string): boolean {
 		return false;
 	}
