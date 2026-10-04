@@ -68,6 +68,8 @@ export class TelegramIndexerService {
 	private readonly BATCH_SIZE = 50;
 	private readonly RATE_LIMIT_DELAY = 1000;
 	private readonly CYCLE_INTERVAL_MS = 5 * 60 * 1000;
+	/** Retry delay when a cycle is due but the client is momentarily disconnected. */
+	private readonly RECONNECT_RETRY_MS = 60 * 1000;
 	/** Search hits confirmed to exist within this window are trusted without asking Telegram again. */
 	private readonly MEDIA_VERIFY_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -298,9 +300,28 @@ export class TelegramIndexerService {
 		this.runIndexingLoop();
 	}
 
+	/** Arms the cycle timer, replacing any pending one, and publishes when it is due. */
+	private scheduleNextCycle(delayMs: number) {
+		if (this.nextCycleTimer) clearTimeout(this.nextCycleTimer);
+		this.nextCycleAt = Date.now() + delayMs;
+		this.nextCycleTimer = setTimeout(() => this.runIndexingLoop(), delayMs);
+	}
+
 	private async runIndexingLoop() {
-		// Just a safeguard if client is not connected
-		if (this.isIndexing || !this.client || !this.client.connected) return;
+		if (this.isIndexing) return;
+		// Signed out: nothing to do until the next sign-in starts the loop again
+		if (!this.client || this.authStatus !== 'connected') {
+			if (this.nextCycleTimer) clearTimeout(this.nextCycleTimer);
+			this.nextCycleTimer = null;
+			this.nextCycleAt = null;
+			return;
+		}
+		// Signed in but the connection dropped for the moment: keep the loop alive and try again shortly
+		if (!this.client.connected) {
+			this.logger.warn('Indexing cycle due but the client is disconnected; retrying in a minute');
+			this.scheduleNextCycle(this.RECONNECT_RETRY_MS);
+			return;
+		}
 		this.isIndexing = true;
 		if (this.nextCycleTimer) {
 			clearTimeout(this.nextCycleTimer);
@@ -361,9 +382,7 @@ export class TelegramIndexerService {
 			this.indexingChatId = null;
 			this.lastCycleAt = Date.now();
 			// Next cycle in CYCLE_INTERVAL_MS, or right away when a chat was requested meanwhile
-			const delay = this.priorityChats.size > 0 ? 0 : this.CYCLE_INTERVAL_MS;
-			this.nextCycleAt = Date.now() + delay;
-			this.nextCycleTimer = setTimeout(() => this.runIndexingLoop(), delay);
+			this.scheduleNextCycle(this.priorityChats.size > 0 ? 0 : this.CYCLE_INTERVAL_MS);
 		}
 	}
 

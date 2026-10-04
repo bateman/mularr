@@ -324,19 +324,32 @@ export class ArrSyncService {
 		this.logger.info(`[${ext.name}] ${jobs.length} wanted title(s); searching ${batch.length} this run${providersNote}`);
 
 		let found = 0;
+		let lastFailure: string | null = null;
+		let failures = 0;
 		for (const job of batch) {
-			const results = await this.searchService.searchAndCollect({ query: job.query, imdbId: job.imdbId, providers: config.searchProviders });
-			const hits = results
-				.filter((r) => r.hash && job.matches(r))
-				.sort((a, b) => (b.sourceCount ?? 0) - (a.sourceCount ?? 0))
-				.slice(0, MAX_RESULTS_PER_QUERY);
 			const jobKey = this.jobKey(ext, job);
-			this.db.upsertIndexerFeedItems(hits.map((r) => this.toFeedItem(r, job, jobKey)));
+			try {
+				const results = await this.searchService.searchAndCollect({ query: job.query, imdbId: job.imdbId, providers: config.searchProviders });
+				const hits = results
+					.filter((r) => r.hash && job.matches(r))
+					.sort((a, b) => (b.sourceCount ?? 0) - (a.sourceCount ?? 0))
+					.slice(0, MAX_RESULTS_PER_QUERY);
+				this.db.upsertIndexerFeedItems(hits.map((r) => this.toFeedItem(r, job, jobKey)));
+				found += hits.length;
+				this.logger.debug(`[${ext.name}] "${job.label}": ${hits.length} matching release(s) out of ${results.length}`);
+			} catch (error: any) {
+				// One title failing must not stop the rest of the batch
+				failures++;
+				lastFailure = error?.message ?? String(error);
+				this.logger.warn(`[${ext.name}] "${job.label}": search failed: ${lastFailure}`);
+			}
+			// Counted as searched either way, so a title that keeps failing rotates to the back instead of blocking the backlog
 			this.lastSearchedByJob.set(jobKey, Date.now());
-			found += hits.length;
-			this.logger.debug(`[${ext.name}] "${job.label}": ${hits.length} matching release(s) out of ${results.length}`);
 		}
-		this.logger.info(`[${ext.name}] Wanted sync done: ${found} release(s) added or refreshed in the feed`);
+		// Every title failed: most likely a provider-wide problem, surfaced as the run's error
+		if (failures > 0 && failures === batch.length) throw new Error(`All ${failures} searches failed; last error: ${lastFailure}`);
+		const failuresNote = failures > 0 ? `, ${failures} search(es) failed` : '';
+		this.logger.info(`[${ext.name}] Wanted sync done: ${found} release(s) added or refreshed in the feed${failuresNote}`);
 		return { wantedCount: jobs.length, searched: batch.length, found };
 	}
 

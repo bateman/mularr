@@ -295,9 +295,9 @@ export const SearchView = component(() => {
 			s.add(hash);
 			downloadingHashes.set(s);
 
-			// The whole ed2k link when the result carries one: aMule can only add a bare hash from its own last search,
-			// so results found by other providers (Hispashare) need the link.
-			const link = result.link?.startsWith('ed2k://') ? result.link : hash;
+			// aMule's own results go by bare hash, which seeds the download with the sources of the search; results
+			// found by other providers (Hispashare) are not in aMule's last search, so they need the whole ed2k link.
+			const link = result.provider !== 'amule' && result.link?.startsWith('ed2k://') ? result.link : hash;
 			await apiService.addDownload(link);
 			console.log('Download added successfully');
 			loadResults();
