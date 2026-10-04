@@ -290,6 +290,26 @@ export class TelegramIndexerService {
 		this.runIndexingLoop();
 	}
 
+	/** Drops what the index holds for the chat; it is indexed again from scratch if enabled. See TelegramIndexerDB.clearChatIndex. */
+	public clearChatIndex(chatId: string) {
+		this.ensureNotIndexing(chatId);
+		this.db.clearChatIndex(chatId);
+		this.logger.info(`Cleared the index of chat ${chatId}`);
+	}
+
+	/** Removes the chat with its index; the next cycle registers it again (disabled) while the account still has it. */
+	public deleteChat(chatId: string) {
+		this.ensureNotIndexing(chatId);
+		this.priorityChats.delete(chatId);
+		this.db.deleteChat(chatId);
+		this.logger.info(`Deleted chat ${chatId} with its index`);
+	}
+
+	/** A pass over the chat writes to its rows as it goes, so purging them meanwhile would leave a half state. */
+	private ensureNotIndexing(chatId: string) {
+		if (this.indexingChatId === chatId) throw new Error('The chat is being indexed right now, try again when the pass ends');
+	}
+
 	// -- Client Actions --
 
 	private async connectClient(apiId: number, apiHash: string, sessionString: string) {
@@ -363,7 +383,12 @@ export class TelegramIndexerService {
 				// Find the dialog object again or use collected map
 				const dialog = dialogs.find((d) => d.id?.toString() === chat.id);
 				if (!dialog) {
-					this.db.recordChatCheck(chat.id, Date.now(), 'Chat not found among the account dialogs');
+					// The account left the chat or it was deleted: indexing it would only fail (CHANNEL_INVALID), and its
+					// messages can no longer be downloaded, so stop indexing it, which also takes it out of searches.
+					// The user can enable it again if the chat comes back.
+					this.logger.warn(`Chat ${chat.title} (${chat.id}) is no longer among the account dialogs; disabling its indexing`);
+					this.db.setChatIndexing(chat.id, false);
+					this.db.recordChatCheck(chat.id, Date.now(), 'Chat not found among the account dialogs; indexing disabled');
 					continue;
 				}
 				this.indexingChatId = chat.id;

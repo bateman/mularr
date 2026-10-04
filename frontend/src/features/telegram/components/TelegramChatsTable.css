@@ -115,6 +115,12 @@
 		}
 	}
 
+	/* The "more actions" button that opens the row menu, in the Action column and in the mobile block */
+	.menu-btn {
+		min-width: 22px;
+		padding: 2px 5px;
+	}
+
 	.mobile-action {
 		min-width: 60px;
 		padding: 2px 5px;

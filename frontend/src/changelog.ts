@@ -38,7 +38,11 @@ export const CHANGELOG: ChangelogVersion[] = [
 			{ id: 6, type: 'improvement', text: 'Transfer details and the indexer feed show the network and origin (search provider) of each download.' },
 			{ id: 7, type: 'improvement', text: 'Telegram has its own section in the sidebar and is no longer managed as an extension.' },
 			{ id: 8, type: 'improvement', text: 'aMule updated to 3.1.0 in the Docker image.' },
-			{ id: 9, type: 'feature', text: "What's new dialog: changes are grouped by version and shown once after each update. Click the version in the sidebar to open the full changelog." },
+			{
+				id: 9,
+				type: 'feature',
+				text: "What's new dialog: changes are grouped by version and shown once after each update. Click the version in the sidebar to open the full changelog.",
+			},
 			{
 				id: 10,
 				type: 'improvement',
@@ -48,6 +52,16 @@ export const CHANGELOG: ChangelogVersion[] = [
 				id: 11,
 				type: 'improvement',
 				text: 'Indexer: with Hispashare enabled, Sonarr/Radarr automatic searches can look releases up by IMDb id, answered from the Hispashare catalogue.',
+			},
+			{
+				id: 12,
+				type: 'improvement',
+				text: 'Telegram: the chats table can be sorted by column and rows can be selected; the row menu (right click) can clear the index of a chat or delete it, also for several chats at once.',
+			},
+			{
+				id: 13,
+				type: 'fix',
+				text: 'Telegram: a chat the account has left or that no longer exists is disabled automatically, and messages of disabled chats are left out of searches, so they no longer cause errors.',
 			},
 		],
 	},

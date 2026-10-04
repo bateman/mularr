@@ -450,7 +450,9 @@ export class TelegramIndexerDB {
 	}
 
 	/**
-	 * Search for media files using FTS5.
+	 * Search for media files using FTS5. Only chats enabled for indexing take part: a disabled
+	 * one (by the user, or by the indexer once the chat vanished from the account) keeps its
+	 * messages stored but out of the results.
 	 *
 	 * Pagination uses a rowid cursor instead of OFFSET so SQLite can seek
 	 * directly to the right position rather than scanning and discarding rows.
@@ -473,9 +475,11 @@ export class TelegramIndexerDB {
 				SELECT mv.*, mm.media_verified_at, bm25(messages_fts) AS score
 				FROM messages_fts
 				JOIN messages_view mv ON mv.id = messages_fts.rowid
+				JOIN chats c ON c.id = mv.chat_id
 				LEFT JOIN messages_metadata mm ON mm.chat_id = mv.chat_id AND mm.message_id = mv.message_id
 				WHERE messages_fts MATCH ?
 				AND mv.has_media = 1
+				AND c.indexing_enabled = 1
 				AND messages_fts.rowid > ?
 				ORDER BY messages_fts.rowid
 				LIMIT ?
@@ -564,6 +568,28 @@ export class TelegramIndexerDB {
 			`
 			)
 			.run(enabled ? 1 : 0, chatId);
+	}
+
+	/**
+	 * Drops everything indexed for the chat (messages, their metadata, topics and the progress cursor) and
+	 * keeps the chat itself with its indexing flag, so an enabled chat gets indexed again from scratch.
+	 * FTS rows go via the delete trigger.
+	 */
+	public clearChatIndex(chatId: string) {
+		this.db.transaction(() => {
+			this.db.prepare('DELETE FROM messages_content WHERE chat_id = ?').run(chatId);
+			this.db.prepare('DELETE FROM messages_metadata WHERE chat_id = ?').run(chatId);
+			this.db.prepare('DELETE FROM topics WHERE chat_id = ?').run(chatId);
+			this.db.prepare('DELETE FROM indexing_progress WHERE chat_id = ?').run(chatId);
+		})();
+	}
+
+	/** Removes the chat and everything indexed for it; registerChat brings it back (disabled) if the account still has it. */
+	public deleteChat(chatId: string) {
+		this.db.transaction(() => {
+			this.clearChatIndex(chatId);
+			this.db.prepare('DELETE FROM chats WHERE id = ?').run(chatId);
+		})();
 	}
 
 	// Active Downloads management

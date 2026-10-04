@@ -101,6 +101,14 @@ export class MockTelegramIndexerService {
 		this.world.requestTelegramIndexing(chatId);
 	}
 
+	clearChatIndex(chatId: string): void {
+		this.world.clearTelegramChatIndex(chatId);
+	}
+
+	deleteChat(chatId: string): void {
+		this.world.deleteTelegramChat(chatId);
+	}
+
 	// ── Downloads ─────────────────────────────────────────────────────────────
 
 	getDownloadStatus(hash: string): DownloadStatus | undefined {

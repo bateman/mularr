@@ -15,6 +15,8 @@ export const telegramRoutes = () => {
 	router.get('/chats', controller.getChats);
 	router.put('/chats/:chatId/indexing', controller.updateChatIndexing);
 	router.post('/chats/:chatId/index', controller.indexChatNow);
+	router.delete('/chats/:chatId/index', controller.clearChatIndex);
+	router.delete('/chats/:chatId', controller.deleteChat);
 
 	return router;
 };

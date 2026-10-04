@@ -833,6 +833,20 @@ export class MockWorld {
 		}, TELEGRAM_INDEX_PASS_MS).unref();
 	}
 
+	/** Like the real one: the chat keeps its flag, its messages and progress go. */
+	clearTelegramChatIndex(chatId: string): void {
+		for (const [key, row] of this.telegramMessages) {
+			if (row.chat_id === chatId) this.telegramMessages.delete(key);
+		}
+		this.telegramProgress.delete(chatId);
+	}
+
+	deleteTelegramChat(chatId: string): void {
+		this.clearTelegramChatIndex(chatId);
+		const index = this.telegramChats.findIndex((c) => c.id === chatId);
+		if (index !== -1) this.telegramChats.splice(index, 1);
+	}
+
 	getTelegramDownload(hash: string): DownloadStatus | undefined {
 		this.advance();
 		return this.telegramDownloads.get(hash);

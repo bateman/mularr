@@ -114,4 +114,14 @@ export class TelegramApiService extends BaseApiService {
 			body: JSON.stringify({ enabled }),
 		});
 	}
+
+	/** Drops everything indexed for the chat; the chat and its indexing flag stay (an enabled chat is indexed again from scratch). */
+	async clearChatIndex(chatId: string): Promise<{ success: boolean }> {
+		return this.request<{ success: boolean }>(`/chats/${chatId}/index`, { method: 'DELETE' });
+	}
+
+	/** Removes the chat with its index; it comes back as ignored after the next cycle while the account still has it. */
+	async deleteChat(chatId: string): Promise<{ success: boolean }> {
+		return this.request<{ success: boolean }>(`/chats/${chatId}`, { method: 'DELETE' });
+	}
 }
