@@ -13,7 +13,8 @@ import { DialogService } from '../../services/DialogService';
 import { ApiError } from '../../services/BaseApiService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { ColumnsMenuService } from '../../services/ColumnsMenuService';
-import { getProviderName } from '../../services/ProvidersApiService';
+import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
+import { sourceInfoContent, type SourceInfo } from '../../utils/sourceInfo';
 import { TableColumns } from '../../utils/TableColumns';
 import { smartLoad, smartPoll } from '../../utils/scheduling';
 import { fbytes } from '../../utils/formats';
@@ -36,6 +37,20 @@ function relativeTime(iso: string, now: number): string {
 	const minutes = Math.round(abs / 60_000);
 	const text = minutes < 60 ? `${minutes} min` : minutes < 60 * 48 ? `${Math.round(minutes / 60)} h` : `${Math.round(minutes / (60 * 24))} d`;
 	return diffMs < 0 ? `${text} ago` : `in ${text}`;
+}
+
+/**
+ * Origin of a feed item (label and website page), from the search-result snapshot the sync stored with it.
+ * The provider id itself is a column of the row; a corrupt or missing snapshot only loses the label.
+ */
+function parseSearchResult(item: IndexerFeedItem): SourceInfo {
+	if (!item.search_result) return { provider: item.provider };
+	try {
+		const r = JSON.parse(item.search_result) as Partial<SourceInfo>;
+		return { provider: item.provider, sourceName: r.sourceName, webUrl: r.webUrl };
+	} catch {
+		return { provider: item.provider };
+	}
 }
 
 function badgeOf(s: ArrSyncExtensionStatus): { text: string; color: string } {
@@ -334,6 +349,7 @@ export const IndexerFeedView = component(() => {
 				return list.map((item) => {
 					const type = MEDIA_TYPE_LABELS[item.media_type] ?? item.media_type;
 					const discovered = new Date(item.discovered_at).toLocaleString();
+					const origin = parseSearchResult(item);
 					return tpl.feedRow({
 						nodes: {
 							nameCol: {},
@@ -343,6 +359,7 @@ export const IndexerFeedView = component(() => {
 									mobType: { inner: type },
 									mobSize: { inner: fbytes(item.size) },
 									mobSources: { inner: `${item.source_count} src` },
+									mobProviderIcon: { inner: getProviderIcon(item.provider), title: getProviderName(item.provider) },
 									mobDiscovered: { inner: discovered },
 									mobQuery: { inner: item.query ?? '', title: item.query ?? '' },
 									mobBlacklistBtn: { onclick: () => blacklistItem(item) },
@@ -352,7 +369,8 @@ export const IndexerFeedView = component(() => {
 							typeCol: { inner: type },
 							sizeCol: { inner: fbytes(item.size) },
 							sourcesCol: { inner: String(item.source_count) },
-							providerCol: { inner: item.provider },
+							providerCol: { inner: getProviderIcon(item.provider), title: getProviderName(item.provider) },
+							originCol: { inner: sourceInfoContent(origin, '-'), title: origin.sourceName ?? '' },
 							queryCol: { inner: item.query ?? '-', title: item.query ?? '' },
 							imdbCol: { inner: item.imdb_id ?? '-' },
 							discoveredCol: { inner: discovered, title: item.discovered_at },

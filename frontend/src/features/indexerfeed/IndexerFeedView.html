@@ -49,7 +49,7 @@
 					<span data-cb="cardNextRun" class="sync-v"></span>
 					<span class="sync-k">Wanted / searched / found</span>
 					<span data-cb="cardCounts" class="sync-v"></span>
-					<span class="sync-k">Providers</span>
+					<span class="sync-k">Search providers</span>
 					<span data-cb="cardProviders" class="sync-v"></span>
 				</div>
 				<div data-cb="cardError" class="sync-card-error"></div>
@@ -129,7 +129,9 @@
 					<th style="width: 55px">Type</th>
 					<th style="width: 75px">Size</th>
 					<th style="width: 60px">Sources</th>
-					<th style="width: 70px">Provider</th>
+					<th style="width: 60px" title="Where the release was found">Provider</th>
+					<th style="width: 14%" title="Title, chat or other origin the provider reports for the release">
+						Origin</th>
 					<th style="width: 160px">Query</th>
 					<th style="width: 90px">IMDb</th>
 					<th style="width: 140px">Discovered</th>
@@ -145,6 +147,7 @@
 								<span data-cb="mobType"></span>
 								<span data-cb="mobSize"></span>
 								<span data-cb="mobSources"></span>
+								<span data-cb="mobProviderIcon"></span>
 								<span data-cb="mobDiscovered"></span>
 							</div>
 							<div class="mobile-info-row" style="margin-top: 5px; gap: 10px">
@@ -163,13 +166,14 @@
 					<td data-cb="typeCol"></td>
 					<td data-cb="sizeCol"></td>
 					<td data-cb="sourcesCol" style="text-align: right"></td>
-					<td data-cb="providerCol"></td>
+					<td data-cb="providerCol" style="text-align: center"></td>
+					<td data-cb="originCol" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap"></td>
 					<td data-cb="queryCol"
 						style="font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px">
 					</td>
 					<td data-cb="imdbCol" style="font-family: monospace"></td>
 					<td data-cb="discoveredCol"></td>
-					<td style="text-align: right">
+					<td style="text-align: center">
 						<button class="ui-btn" style="min-width: 40px; height: 20px; padding: 0 5px"
 							data-cb="blacklistBtn" title="Blacklist this hash and remove it from the feed">
 							Blacklist
@@ -181,7 +185,8 @@
 					</td>
 				</tr>
 				<tr data-cb="noItemsRow">
-					<td colspan="9" style="text-align: center; padding: 10px; font-style: italic" data-cb="noItemsText">
+					<td colspan="10" style="text-align: center; padding: 10px; font-style: italic"
+						data-cb="noItemsText">
 						The feed is empty.</td>
 				</tr>
 			</tbody>
