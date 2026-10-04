@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import { Api, TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
@@ -72,7 +73,10 @@ export class TelegramIndexerService {
 
 	constructor() {
 		// Initialize DB
-		const indexerDbPath = path.join(__APP_CONFIG__.dataDir, 'indexer.db');
+		const { dataDir, telegramDir } = __APP_CONFIG__;
+		fs.mkdirSync(telegramDir, { recursive: true });
+		const indexerDbPath = path.join(telegramDir, 'indexer.db');
+		this.moveLegacyIndexerDb(path.join(dataDir, 'indexer.db'), indexerDbPath);
 		this.db = new TelegramIndexerDB(indexerDbPath);
 
 		this.downloadManager = new TelegramDownloadManager(
@@ -80,6 +84,18 @@ export class TelegramIndexerService {
 			() => this.authStatus,
 			this.db
 		);
+	}
+
+	/**
+	 * Until 2026-10 the indexer database sat at the root of the data directory. Moves it (with the WAL and
+	 * shared-memory files SQLite may have left beside it) into telegram/, so upgraded installs keep their index.
+	 */
+	private moveLegacyIndexerDb(from: string, to: string) {
+		if (!fs.existsSync(from) || fs.existsSync(to)) return;
+		for (const suffix of ['', '-wal', '-shm']) {
+			if (fs.existsSync(from + suffix)) fs.renameSync(from + suffix, to + suffix);
+		}
+		this.logger.info(`Moved the Telegram indexer database from ${from} to ${to}`);
 	}
 
 	public async getAuthStatus() {

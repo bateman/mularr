@@ -37,6 +37,8 @@ export interface AppConfig {
 	dataDir: string;
 	/** Main SQLite database, `database.sqlite` inside dataDir unless the deprecated DATABASE_PATH says otherwise. */
 	databasePath: string;
+	/** What the Telegram feature persists (the indexer database with the account and the chats index): `telegram/` inside dataDir. */
+	telegramDir: string;
 	auth: {
 		username?: string;
 		password?: string;
@@ -134,7 +136,7 @@ function loadConfig(): AppConfig {
 	const mockMode = envBool('MOCK_MODE');
 	// Mock mode never notifies a real chat, whatever the environment says
 	const telegramBotToken = mockMode ? undefined : envString('TELEGRAM_BOT_TOKEN');
-	// Single data directory (database.sqlite, indexer.db, jwt-secret, amule/). The Docker image sets DATA_DIR to its
+	// Single data directory (database.sqlite, jwt-secret, telegram/, amule/). The Docker image sets DATA_DIR to its
 	// /app/data volume; in the devcontainer it is dev-data/ at the repository root, which .devcontainer/setup-amule.sh
 	// seeds with an amule.conf. DATABASE_PATH predates DATA_DIR: when set it still wins, and the data directory is
 	// the one containing the database as before, so existing deployments keep their layout untouched.
@@ -155,6 +157,7 @@ function loadConfig(): AppConfig {
 		logLevel: envEnum('LOG_LEVEL', LOG_LEVELS, 'info'),
 		dataDir,
 		databasePath: legacyDatabasePath ?? path.join(dataDir, 'database.sqlite'),
+		telegramDir: path.join(dataDir, 'telegram'),
 		auth: {
 			username: envString('AUTH_USERNAME'),
 			password: envString('AUTH_PASSWORD'),
