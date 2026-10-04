@@ -17,58 +17,63 @@
 			<span class="icon-img icon-download"></span>
 			Update List
 		</button>
-		<button class="ui-btn ui-btn-icon ui-columns-btn" data-cb="columnsBtn" title="Choose columns">▦</button>
 	</div>
 
-	<div class="ui-table-container" style="flex: 1;">
-		<table class="ui-list" data-cb="serversTable">
-			<thead>
-				<tr>
-					<th data-cb="thName" style="width: 200px;" class="is-mobile-primary">Server Name</th>
-					<th data-cb="thIp" style="width: 150px;">IP</th>
-					<th data-cb="thDesc" style="width: 200px;">Description</th>
-					<th data-cb="thPing" style="width: 50px; text-align: right;">Ping</th>
-					<th data-cb="thUsers" style="width: 70px; text-align: right;">Users</th>
-					<th data-cb="thMaxUsers" style="width: 70px; text-align: right;">Max Users</th>
-					<th data-cb="thFiles" style="width: 70px; text-align: right;">Files</th>
-					<th data-cb="thPref" style="width: 70px;">Preference</th>
-					<th data-cb="thFailed" style="width: 50px;">Failed</th>
-					<th data-cb="thStatic" style="width: 50px;">Static</th>
-					<th data-cb="thSoftLimit" style="width: 70px;">Soft Limit</th>
-					<th data-cb="thLowID" style="width: 50px;">LowID</th>
-					<th data-cb="thObfuscated" style="width: 70px;">Obfuscated</th>
-				</tr>
-			</thead>
-			<tbody data-cb="serverListContainer">
-				<tr data-cb="serverRow">
-					<td data-cb="nameCol" class="is-mobile-primary">
-						<span data-cb="nameText"></span>
-						<div class="mobile-info-block" data-cb="mobileInfo">
-							<div class="mobile-info-row">
-								<span data-cb="mobIp"></span> • <span data-cb="mobUsers"></span> users
+	<div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+		<div class="ui-header-small">
+			Servers
+			<button class="ui-btn ui-btn-icon ui-columns-btn" data-cb="columnsBtn" title="Choose columns">▦</button>
+		</div>
+		<div class="ui-table-container" style="flex: 1;">
+			<table class="ui-list" data-cb="serversTable">
+				<thead>
+					<tr>
+						<th data-cb="thName" style="width: 200px;" class="is-mobile-primary">Server Name</th>
+						<th data-cb="thIp" style="width: 150px;">IP</th>
+						<th data-cb="thDesc" style="width: 200px;">Description</th>
+						<th data-cb="thPing" style="width: 50px; text-align: right;">Ping</th>
+						<th data-cb="thUsers" style="width: 70px; text-align: right;">Users</th>
+						<th data-cb="thMaxUsers" style="width: 70px; text-align: right;">Max Users</th>
+						<th data-cb="thFiles" style="width: 70px; text-align: right;">Files</th>
+						<th data-cb="thPref" style="width: 70px;">Preference</th>
+						<th data-cb="thFailed" style="width: 50px;">Failed</th>
+						<th data-cb="thStatic" style="width: 50px;">Static</th>
+						<th data-cb="thSoftLimit" style="width: 70px;">Soft Limit</th>
+						<th data-cb="thLowID" style="width: 50px;">LowID</th>
+						<th data-cb="thObfuscated" style="width: 70px;">Obfuscated</th>
+					</tr>
+				</thead>
+				<tbody data-cb="serverListContainer">
+					<tr data-cb="serverRow">
+						<td data-cb="nameCol" class="is-mobile-primary">
+							<span data-cb="nameText"></span>
+							<div class="mobile-info-block" data-cb="mobileInfo">
+								<div class="mobile-info-row">
+									<span data-cb="mobIp"></span> • <span data-cb="mobUsers"></span> users
+								</div>
+								<div class="mobile-info-row">
+									<span data-cb="mobFiles"></span> files
+								</div>
 							</div>
-							<div class="mobile-info-row">
-								<span data-cb="mobFiles"></span> files
-							</div>
-						</div>
-					</td>
-					<td data-cb="ipCol"></td>
-					<td data-cb="descCol"></td>
-					<td data-cb="pingCol" style="text-align: right;"></td>
-					<td data-cb="usersCol" style="text-align: right;"></td>
-					<td data-cb="maxUsersCol" style="text-align: right;"></td>
-					<td data-cb="filesCol" style="text-align: right;"></td>
-					<td data-cb="prefCol"></td>
-					<td data-cb="failedCol"></td>
-					<td data-cb="staticCol"></td>
-					<td data-cb="softLimitCol"></td>
-					<td data-cb="lowIDCol"></td>
-					<td data-cb="obfuscatedCol"></td>
-				</tr>
-			</tbody>
-		</table>
-	</div>
+						</td>
+						<td data-cb="ipCol"></td>
+						<td data-cb="descCol"></td>
+						<td data-cb="pingCol" style="text-align: right;"></td>
+						<td data-cb="usersCol" style="text-align: right;"></td>
+						<td data-cb="maxUsersCol" style="text-align: right;"></td>
+						<td data-cb="filesCol" style="text-align: right;"></td>
+						<td data-cb="prefCol"></td>
+						<td data-cb="failedCol"></td>
+						<td data-cb="staticCol"></td>
+						<td data-cb="softLimitCol"></td>
+						<td data-cb="lowIDCol"></td>
+						<td data-cb="obfuscatedCol"></td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
 
+	</div>
 	<div data-cb="logContainer" class="ui-panel-sunken"
 		style="height: 30%; overflow: auto; font-family: monospace; white-space: pre-wrap; padding: 2px;">
 		<div data-cb="logLine"></div>
