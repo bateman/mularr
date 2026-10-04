@@ -56,6 +56,12 @@ export class TransfersContextService {
 			if (cmd === 'cancel') {
 				const confirmed = await this.dialogService.confirm('Are you sure you want to cancel the selected downloads?', 'Cancel Download');
 				if (!confirmed) return false;
+				// One at a time: the backend serializes cancels anyway, and a failure must not stop the rest
+				for (const h of hashes) {
+					await this.mediaApi.sendDownloadCommand(h, cmd);
+				}
+				this.reload();
+				return true;
 			}
 			await Promise.all(hashes.map((h) => this.mediaApi.sendDownloadCommand(h, cmd)));
 			this.reload();
