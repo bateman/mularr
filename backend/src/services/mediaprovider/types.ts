@@ -65,6 +65,13 @@ export interface IMediaProvider {
 	/** Fire-and-forget search initiation. */
 	startSearch(criteria: SearchCriteria): Promise<void>;
 
+	/**
+	 * True for catalogue providers that answer SearchCriteria.imdbId on its own, with no text query. The
+	 * Torznab indexer advertises IMDb id searches while one of them is available and sends those searches
+	 * to them alone (see MediaSearchService.imdbIdSearchProviderIds).
+	 */
+	readonly searchesByImdbId?: boolean;
+
 	/** Return cached/latest search results for this provider. */
 	getSearchResults(): Promise<MediaSearchResult[]>;
 

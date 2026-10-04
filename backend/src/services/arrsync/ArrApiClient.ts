@@ -57,11 +57,14 @@ const PAGE_SIZE = 200;
 /** Hard stop for the pagination loop: 1000 wanted items is plenty for one sync run to pick from. */
 const MAX_PAGES = 5;
 
-/** Normalizes an IMDb id as the *arr report it; null for anything that is not a tt number. */
+/**
+ * Normalizes an IMDb id to "tt1234567". The *arr APIs report it with the "tt" prefix; Torznab requests
+ * carry the digits alone (Radarr strips the prefix). Anything else is null.
+ */
 export function toImdbId(value: unknown): string | null {
 	if (typeof value !== 'string') return null;
-	const trimmed = value.trim().toLowerCase();
-	return /^tt\d+$/.test(trimmed) ? trimmed : null;
+	const digits = value.trim().toLowerCase().replace(/^tt/, '');
+	return /^\d+$/.test(digits) ? `tt${digits}` : null;
 }
 
 export abstract class ArrApiClient {

@@ -4,6 +4,7 @@ import { eD2kLinkToFakeMagnet, hashToFakeMagnet } from './qbittorrentMappings';
 import { MediaSearchService, MediaSearchResult } from '../services/mediaprovider';
 import { MainDB, type IndexerFeedMediaType, type IndexerFeedRecord } from '../services/db/MainDB';
 import { expandApostrophes, filterByEpisode } from '../services/releaseNameTools';
+import { toImdbId } from '../services/arrsync/ArrApiClient';
 import { parseEd2kLink } from '../services/eD2kTools';
 import { LoggerFactory } from '../services/logging/Logger';
 
@@ -21,6 +22,17 @@ function feedRecordToRssItem(r: IndexerFeedRecord): RssItem {
 		pubDate: new Date(r.discovered_at),
 	};
 }
+
+const EMPTY_FEED_PLACEHOLDER: MediaSearchResult[] = [
+	{
+		name: 'Mularr Test Item',
+		size: 10240,
+		sourceCount: 0,
+		link: 'http://localhost:8940/dummy',
+		hash: '00000000000000000000000000000000',
+		provider: 'Mularr',
+	},
+];
 
 /**
  * IndexerController provides a Torznab-compatible API for Sonarr, Radarr and Lidarr.
@@ -64,49 +76,23 @@ export class IndexerController {
 			if (!q && !imdbid && !musicQuery) {
 				const start = parseInt(offset as string) || 0;
 				const size = parseInt(limit as string) || 100;
-				// tvsearch/movie map to one media type; a plain search gets everything; music has no feed
-				const mediaType: IndexerFeedMediaType | undefined = t === 'tvsearch' ? 'tv' : t === 'movie' ? 'movie' : undefined;
-				const total = t === 'music' ? 0 : this.db.countIndexerFeed({ mediaType });
-				if (total > 0) {
-					const items = this.db.getIndexerFeed({ mediaType }, start, size).map((r) => feedRecordToRssItem(r));
-					this.logger.info(`RSS sync (${t}): returning ${items.length} feed item(s) (offset: ${start}, limit: ${size}, total: ${total})`);
-					return this.renderRss(res, items, cat as string, total);
-				}
-
-				this.logger.debug('No search terms provided (q/imdbid/artist/album) and the feed is empty — returning one fake item for compatibility');
-				const fakeItem = [
-					{
-						name: 'Mularr Test Item',
-						size: 10240,
-						sourceCount: 0,
-						link: 'http://localhost:8940/dummy',
-						hash: '00000000000000000000000000000000',
-						provider: 'Mularr',
-					} as MediaSearchResult,
-				];
-				return this.renderRss(res, fakeItem, cat as string);
+				return this.handleRssSync(res, start, size, t, cat as string);
 			}
 
-			let queryStr = (q as string) || '';
+			// Releases often drop apostrophes (e.g. "Widow's Bay" -> "Widows Bay").
+			// Done here so every search type benefits.
+			let queryStr = expandApostrophes((q as string) || '');
+			const imdbId = toImdbId(imdbid);
 
 			// Lidarr sends a literal empty `q=` alongside artist/album —
 			// fall back to the structured params whenever q is blank.
 			if (t === 'music' && !queryStr.trim()) {
-				queryStr = musicQuery;
+				queryStr = expandApostrophes(musicQuery);
 			}
 
-			// If no 'q' but has metadata (Radarr/Sonarr often do this first)
-			if (!queryStr && imdbid) {
-				// In a real eMule world, finding by IMDB directly is hard.
-				// For now, if we don't have a name, we return empty to pass the "Test" accurately.
-				// Sonarr/Radarr usually send the title in 'q' for actual searches though.
-				this.logger.debug(`Search by IMDB ${imdbid} requested without title. Returning empty.`);
-				return this.renderRss(res, [], cat as string);
-			}
-
-			// Radarr/Sonarr "Test" often sends 't=movie' or 't=search' without 'q'.
-			if (!queryStr.trim()) {
-				this.logger.debug(`Empty query for action ${t}, returning empty valid RSS for Test compatibility`);
+			const providers = this.getSearchProvidersFor(queryStr, imdbId);
+			if (providers?.length === 0) {
+				this.logger.debug(`No providers to search with (q "${queryStr}", IMDb id ${imdbId ?? 'none'}); returning empty valid RSS`);
 				return this.renderRss(res, [], cat as string);
 			}
 
@@ -117,12 +103,8 @@ export class IndexerController {
 				epFilter = { season: parseInt(season, 10), ep: parseInt(ep, 10) };
 			}
 
-			// Releases often drop apostrophes (e.g. "Widow's Bay" -> "Widows Bay").
-			// Done here so every search type benefits.
-			queryStr = expandApostrophes(queryStr);
-
 			try {
-				const results = await this.searchService.searchAndCollect({ query: queryStr });
+				const results = await this.searchService.searchAndCollect({ query: queryStr, imdbId, providers });
 
 				let list = epFilter ? filterByEpisode(results, epFilter.season, epFilter.ep) : results;
 
@@ -131,7 +113,9 @@ export class IndexerController {
 				const size = parseInt(limit as string) || 100;
 				list = list.slice(start, start + size);
 
-				this.logger.info(`Returning ${list.length} results (offset: ${start}, limit: ${size}) for query "${queryStr}"`);
+				this.logger.info(
+					`Returning ${list.length} results (offset: ${start}, limit: ${size}) for ${queryStr ? `query "${queryStr}"` : `IMDb id ${imdbId}`}`
+				);
 
 				return this.renderRss(res, list, cat as string);
 			} catch (e: any) {
@@ -143,23 +127,49 @@ export class IndexerController {
 		res.status(400).send('Unknown action');
 	};
 
+	private handleRssSync(res: Response, start: number, size: number, t?: string, cat?: string) {
+		// tvsearch/movie map to one media type; a plain search gets everything; music has no feed
+		const mediaType: IndexerFeedMediaType | undefined = t === 'tvsearch' ? 'tv' : t === 'movie' ? 'movie' : undefined;
+		const total = t === 'music' ? 0 : this.db.countIndexerFeed({ mediaType });
+		if (total > 0) {
+			const items = this.db.getIndexerFeed({ mediaType }, start, size).map((r) => feedRecordToRssItem(r));
+			this.logger.info(`RSS sync (${t}): returning ${items.length} feed item(s) (offset: ${start}, limit: ${size}, total: ${total})`);
+			return this.renderRss(res, items, cat, total);
+		}
+
+		this.logger.debug('No search terms provided (q/imdbid/artist/album) and the feed is empty — returning one fake item for compatibility');
+		return this.renderRss(res, EMPTY_FEED_PLACEHOLDER, cat);
+	}
+
+	/**
+	 * Providers a Torznab search goes to: all of them for a text query (undefined), the id-searching ones for
+	 * an IMDb id alone, none when there is nothing to search with (the *arr Test sends no terms at all). The
+	 * id tier is advertised in caps only while an id-searching provider is available; its exact matches are
+	 * enough, and when it knows nothing the *arr falls back to its text tier on the empty answer.
+	 */
+	private getSearchProvidersFor(queryStr: string, imdbId: string | null): string[] | undefined {
+		if (queryStr.trim()) return undefined;
+		return imdbId ? this.searchService.imdbIdSearchProviderIds() : [];
+	}
+
 	private getCapabilities(res: Response) {
 		res.header('Content-Type', 'application/xml');
 		// Search elements MUST live inside <searching> — the *arr caps parsers
 		// (shared NzbDrone.Core lineage) only read elements there and otherwise
 		// fall back to built-in defaults. Names per those parsers: Lidarr
 		// "audio-search" ("music-search" kept as a Jackett alias), Sonarr
-		// "tv-search", Radarr "movie-search". movie-search advertises only "q"
-		// (imdbid-only queries return empty, so advertising imdbid would make
-		// Radarr prefer an always-empty tier); tv-search omits "rid" likewise.
+		// "tv-search", Radarr "movie-search". imdbid is advertised only while a catalogue provider searches
+		// by id (see MediaSearchService.imdbIdSearchProviderIds): the *arr try an id-only tier first when it
+		// is listed, and with nobody to answer it that tier would always be empty. tv-search omits "rid" likewise.
+		const idParams = this.searchService.imdbIdSearchProviderIds().length > 0 ? ',imdbid' : '';
 		const caps = `<?xml version="1.0" encoding="UTF-8"?>
 <caps>
   <server title="Mularr" description="aMule Indexer for Sonarr/Radarr/Lidarr" />
   <limits max="100" default="50" />
   <searching>
     <search available="yes" supportedParams="q" />
-    <tv-search available="yes" supportedParams="q,season,ep" />
-    <movie-search available="yes" supportedParams="q" />
+    <tv-search available="yes" supportedParams="q,season,ep${idParams}" />
+    <movie-search available="yes" supportedParams="q${idParams}" />
     <audio-search available="yes" supportedParams="q,artist,album" />
     <music-search available="yes" supportedParams="q,artist,album" />
   </searching>

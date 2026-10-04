@@ -44,6 +44,11 @@ export const CHANGELOG: ChangelogVersion[] = [
 				type: 'improvement',
 				text: 'Telegram: the chats table shows indexed messages and files, size, topics, last message, last check and last error per chat, can be filtered, and chats can be indexed on demand.',
 			},
+			{
+				id: 11,
+				type: 'improvement',
+				text: 'Indexer: with Hispashare enabled, Sonarr/Radarr automatic searches can look releases up by IMDb id, answered from the Hispashare catalogue.',
+			},
 		],
 	},
 ];

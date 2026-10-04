@@ -76,6 +76,14 @@ export class MediaSearchService {
 		return selected;
 	}
 
+	/**
+	 * Ids of the available providers that answer an IMDb id with no text query (see IMediaProvider.searchesByImdbId).
+	 * Empty when there is none: the Torznab indexer then neither advertises nor serves id searches.
+	 */
+	imdbIdSearchProviderIds(): string[] {
+		return this.providers.filter((p) => p.searchesByImdbId && p.isAvailable()).map((p) => p.providerId);
+	}
+
 	/** Epoch ms of the last interactive startSearch; 0 when none happened yet. */
 	get lastInteractiveSearchAt(): number {
 		return this._lastInteractiveSearchAt;

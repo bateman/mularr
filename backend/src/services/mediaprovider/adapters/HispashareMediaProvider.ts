@@ -21,6 +21,7 @@ export const HISPASHARE_PROVIDER_ID = 'hispashare';
 export class HispashareMediaProvider implements IMediaProvider {
 	private readonly logger = LoggerFactory.create(this);
 	readonly providerId = HISPASHARE_PROVIDER_ID;
+	readonly searchesByImdbId = true;
 	private readonly db = container.get(MainDB);
 	/** Client for the current extension settings; rebuilt when the URL or token change, so its cache and quota counters survive searches. */
 	private client: { key: string; instance: HispashareApiClient } | null = null;
