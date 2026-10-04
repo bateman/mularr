@@ -1,0 +1,44 @@
+/**
+ * User-facing changelog shown by the "What's new" dialog.
+ *
+ * Versions are listed newest first. Every entry has a globally unique,
+ * strictly increasing `id`: the dialog stores the highest id it has shown in
+ * localStorage and only presents entries with a higher id next time, so new
+ * entries can be appended to an in-development version and still be notified.
+ *
+ * When adding an entry: use the next free id (highest existing + 1), never
+ * reuse or reorder ids.
+ */
+
+export type ChangelogEntryType = 'feature' | 'improvement' | 'fix';
+
+export interface ChangelogEntry {
+	id: number;
+	type: ChangelogEntryType;
+	text: string;
+}
+
+export interface ChangelogVersion {
+	/** Version without pre-release suffix, e.g. "1.0.0". */
+	version: string;
+	/** Release date (YYYY-MM-DD); omitted while the version is still in development. */
+	date?: string;
+	entries: ChangelogEntry[];
+}
+
+export const CHANGELOG: ChangelogVersion[] = [
+	{
+		version: '1.0.0',
+		entries: [
+			{ id: 1, type: 'feature', text: 'Indexer feed: Mularr now exposes a Torznab-compatible feed so Sonarr/Radarr can pull releases from it.' },
+			{ id: 2, type: 'feature', text: 'Extensions can be configured individually from a redesigned Extensions view.' },
+			{ id: 3, type: 'feature', text: 'Hispashare search provider for eD2k searches and downloads.' },
+			{ id: 4, type: 'feature', text: 'Table columns can be shown, hidden and resized; the layout is remembered per table.' },
+			{ id: 5, type: 'improvement', text: 'Search providers can be selected per Arr sync and media search.' },
+			{ id: 6, type: 'improvement', text: 'Transfer details and the indexer feed show the network and origin (search provider) of each download.' },
+			{ id: 7, type: 'improvement', text: 'Telegram has its own section in the sidebar and is no longer managed as an extension.' },
+			{ id: 8, type: 'improvement', text: 'aMule updated to 3.1.0 in the Docker image.' },
+			{ id: 9, type: 'feature', text: "What's new dialog: changes are grouped by version and shown once after each update. Click the version in the sidebar to open the full changelog." },
+		],
+	},
+];

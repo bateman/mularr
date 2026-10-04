@@ -2,6 +2,7 @@ import './styles/style.css';
 import { inject, mountRoot } from 'chispa';
 import { LocalPrefsService } from './services/LocalPrefsService';
 import { AuthApiService } from './services/AuthApiService';
+import { ChangelogService } from './services/ChangelogService';
 import { App } from './layout/App';
 import { LoginView } from './features/login/LoginView';
 import { routes } from './routes';
@@ -13,6 +14,7 @@ document.documentElement.setAttribute('data-theme', savedTheme);
 
 const mountApp = () => {
 	mountRoot(App({ routes }), document.body);
+	inject(ChangelogService).showOnStartupIfNeeded();
 };
 
 (async () => {

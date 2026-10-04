@@ -1,0 +1,33 @@
+<div class="changelog-dialog">
+	<div class="ui-panel-sunken changelog-unstable" data-cb="unstableBanner">
+		<span class="changelog-unstable-icon">⚠️</span>
+		<span>
+			You are running an <b>unstable</b> version (<span data-cb="unstableVersion"></span>).
+			It may contain unfinished features or bugs. For everyday use, prefer a stable release.
+		</span>
+	</div>
+
+	<div class="changelog-list" data-cb="versionsList">
+		<div class="changelog-version" data-cb="versionBlock">
+			<div class="changelog-version-header">
+				<span class="changelog-version-name" data-cb="versionName"></span>
+				<span class="changelog-version-date" data-cb="versionDate"></span>
+			</div>
+			<ul class="changelog-entries" data-cb="entriesList">
+				<li class="changelog-entry" data-cb="entryItem">
+					<span class="changelog-entry-type" data-cb="entryType"></span>
+					<span class="changelog-entry-text" data-cb="entryText"></span>
+				</li>
+			</ul>
+		</div>
+	</div>
+
+	<div data-cb="starBanner"></div>
+
+	<div class="changelog-footer">
+		<label class="changelog-dont-show">
+			<input type="checkbox" data-cb="dontShowAgain" /> Don't show this dialog on startup
+		</label>
+		<button class="ui-btn" data-cb="btnClose">Close</button>
+	</div>
+</div>
