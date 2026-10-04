@@ -22,7 +22,7 @@ echo "aMule ${AMULE_VERSION} installation complete."
 
 # -- Configuration Setup --
 # All dev runtime data lives in dev-data/ at the repository root (gitignored), laid out like the
-# production /app/data volume: database.sqlite next to an amule/ config dir. The backend resolves
+# production /app/data volume: mularr.db next to an amule/ config dir. The backend resolves
 # the same defaults in backend/src/app-env.ts, so no AMULE_CONFIG_DIR is needed in dev.
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONF_DIR="${REPO_DIR}/dev-data/amule"

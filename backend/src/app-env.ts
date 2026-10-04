@@ -35,7 +35,7 @@ export interface AppConfig {
 	 * repository root; in mock mode it is a throwaway directory under the OS temp folder.
 	 */
 	dataDir: string;
-	/** Main SQLite database, `database.sqlite` inside dataDir unless the deprecated DATABASE_PATH says otherwise. */
+	/** Main SQLite database, `mularr.db` inside dataDir unless the deprecated DATABASE_PATH says otherwise. */
 	databasePath: string;
 	/** What the Telegram feature persists (the indexer database with the account and the chats index): `telegram/` inside dataDir. */
 	telegramDir: string;
@@ -136,14 +136,14 @@ function loadConfig(): AppConfig {
 	const mockMode = envBool('MOCK_MODE');
 	// Mock mode never notifies a real chat, whatever the environment says
 	const telegramBotToken = mockMode ? undefined : envString('TELEGRAM_BOT_TOKEN');
-	// Single data directory (database.sqlite, jwt-secret, telegram/, amule/). The Docker image sets DATA_DIR to its
+	// Single data directory (mularr.db, jwt-secret, telegram/, amule/). The Docker image sets DATA_DIR to its
 	// /app/data volume; in the devcontainer it is dev-data/ at the repository root, which .devcontainer/setup-amule.sh
 	// seeds with an amule.conf. DATABASE_PATH predates DATA_DIR: when set it still wins, and the data directory is
 	// the one containing the database as before, so existing deployments keep their layout untouched.
 	const legacyDatabasePath = mockMode ? undefined : envString('DATABASE_PATH');
 	if (legacyDatabasePath) {
 		console.warn(
-			`DATABASE_PATH is deprecated and will be removed in a future release. Set DATA_DIR=${path.dirname(legacyDatabasePath)} instead, and rename the database file to database.sqlite if it is called differently.`
+			`DATABASE_PATH is deprecated and will be removed in a future release. Set DATA_DIR=${path.dirname(legacyDatabasePath)} instead, and rename the database file to mularr.db if it is called differently.`
 		);
 	}
 	const dataDir = mockMode
@@ -156,7 +156,7 @@ function loadConfig(): AppConfig {
 		port: envInt('PORT', 8940),
 		logLevel: envEnum('LOG_LEVEL', LOG_LEVELS, 'info'),
 		dataDir,
-		databasePath: legacyDatabasePath ?? path.join(dataDir, 'database.sqlite'),
+		databasePath: legacyDatabasePath ?? path.join(dataDir, 'mularr.db'),
 		telegramDir: path.join(dataDir, 'telegram'),
 		auth: {
 			username: envString('AUTH_USERNAME'),

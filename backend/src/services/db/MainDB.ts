@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import Database from 'better-sqlite3';
 import type { IndexerFeedItem, IndexerFeedMediaType } from '../../types/IndexerFeedTypes';
 import { LoggerFactory } from '../logging/Logger';
@@ -71,8 +73,22 @@ export class MainDB {
 
 	constructor(dbPath: string) {
 		this.dbPath = dbPath;
+		this.moveLegacyDatabase(path.join(path.dirname(dbPath), 'database.sqlite'));
 		this.db = new Database(this.dbPath);
 		this.init();
+	}
+
+	/**
+	 * Until 2026-10 the database was called database.sqlite. Renames it (with the WAL and shared-memory files
+	 * SQLite may have left beside it) to the current path, so upgraded installs keep their data. Nothing happens
+	 * when the current path is that very file (deprecated DATABASE_PATH pointing at it) or already exists.
+	 */
+	private moveLegacyDatabase(from: string) {
+		if (from === this.dbPath || !fs.existsSync(from) || fs.existsSync(this.dbPath)) return;
+		for (const suffix of ['', '-wal', '-shm']) {
+			if (fs.existsSync(from + suffix)) fs.renameSync(from + suffix, this.dbPath + suffix);
+		}
+		this.logger.info(`Renamed the database from ${from} to ${this.dbPath}`);
 	}
 
 	private init() {
