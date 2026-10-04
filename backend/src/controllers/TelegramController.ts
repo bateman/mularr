@@ -84,6 +84,17 @@ export class TelegramController {
 		}
 	};
 
+	indexChatNow = (req: Request, res: Response) => {
+		try {
+			const { chatId } = req.params;
+			const id = Array.isArray(chatId) ? chatId[0] : chatId;
+			this.service.requestIndexing(id);
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
+		}
+	};
+
 	updateChatIndexing = (req: Request, res: Response) => {
 		try {
 			const { chatId } = req.params;

@@ -1,8 +1,8 @@
 import { Api } from 'telegram';
 import { returnBigInt } from 'telegram/Helpers';
-import type { Chat, MessageRow, TelegramAccount } from '../services/db/TelegramIndexerDB';
+import type { MessageRow, TelegramAccount } from '../services/db/TelegramIndexerDB';
 import type { DownloadStatus } from '../services/TelegramDownloadManager';
-import type { AuthStatus, TelegramIndexerSearchResult } from '../services/TelegramIndexerService';
+import type { AuthStatus, TelegramChatsResponse, TelegramIndexerSearchResult } from '../services/TelegramIndexerService';
 import { LoggerFactory } from '../services/logging/Logger';
 import * as F from './fixtures';
 import { getMockWorld } from './MockWorld';
@@ -84,13 +84,21 @@ export class MockTelegramIndexerService {
 
 	// ── Chats ─────────────────────────────────────────────────────────────────
 
-	getDiscoveredChats(): Chat[] {
-		return this.world.telegramChats.map((c) => ({ ...c }));
+	getDiscoveredChats(): TelegramChatsResponse {
+		return this.world.getTelegramChatsOverview();
 	}
 
 	setChatIndexing(chatId: string, enabled: boolean): void {
 		const chat = this.world.telegramChats.find((c) => c.id === chatId);
-		if (chat) chat.indexing_enabled = enabled ? 1 : 0;
+		if (!chat) return;
+		chat.indexing_enabled = enabled ? 1 : 0;
+		if (enabled) this.world.requestTelegramIndexing(chatId);
+	}
+
+	requestIndexing(chatId: string): void {
+		const chat = this.world.telegramChats.find((c) => c.id === chatId);
+		if (!chat?.indexing_enabled) throw new Error('Indexing is disabled for this chat');
+		this.world.requestTelegramIndexing(chatId);
 	}
 
 	// ── Downloads ─────────────────────────────────────────────────────────────

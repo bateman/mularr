@@ -17,7 +17,7 @@ import { getProviderIcon, getProviderName } from '../../services/ProvidersApiSer
 import { sourceInfoContent, type SourceInfo } from '../../utils/sourceInfo';
 import { TableColumns } from '../../utils/TableColumns';
 import { smartLoad, smartPoll } from '../../utils/scheduling';
-import { fbytes } from '../../utils/formats';
+import { fbytes, relativeTime } from '../../utils/formats';
 import tpl from './IndexerFeedView.html';
 import './IndexerFeedView.css';
 
@@ -28,16 +28,6 @@ const SEARCH_DEBOUNCE_MS = 300;
 type Tab = 'wanted' | 'feed';
 
 const MEDIA_TYPE_LABELS: Record<IndexerFeedMediaType, string> = { tv: 'TV', movie: 'Movie' };
-
-/** "5 min ago" / "in 2 h" style distance from now; whole units, never seconds. */
-function relativeTime(iso: string, now: number): string {
-	const diffMs = new Date(iso).getTime() - now;
-	const abs = Math.abs(diffMs);
-	if (abs < 60_000) return diffMs <= 0 ? 'just now' : 'in less than a minute';
-	const minutes = Math.round(abs / 60_000);
-	const text = minutes < 60 ? `${minutes} min` : minutes < 60 * 48 ? `${Math.round(minutes / 60)} h` : `${Math.round(minutes / (60 * 24))} d`;
-	return diffMs < 0 ? `${text} ago` : `in ${text}`;
-}
 
 /**
  * Origin of a feed item (label and website page), from the search-result snapshot the sync stored with it.

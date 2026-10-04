@@ -39,6 +39,11 @@ export const CHANGELOG: ChangelogVersion[] = [
 			{ id: 7, type: 'improvement', text: 'Telegram has its own section in the sidebar and is no longer managed as an extension.' },
 			{ id: 8, type: 'improvement', text: 'aMule updated to 3.1.0 in the Docker image.' },
 			{ id: 9, type: 'feature', text: "What's new dialog: changes are grouped by version and shown once after each update. Click the version in the sidebar to open the full changelog." },
+			{
+				id: 10,
+				type: 'improvement',
+				text: 'Telegram: the chats table shows indexed messages and files, size, topics, last message, last check and last error per chat, can be filtered, and chats can be indexed on demand.',
+			},
 		],
 	},
 ];

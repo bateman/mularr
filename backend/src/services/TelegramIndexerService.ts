@@ -5,13 +5,33 @@ import { Logger } from 'telegram/extensions';
 import { FloodWaitError } from 'telegram/errors/RPCErrorList';
 import { Dialog } from 'telegram/tl/custom/dialog';
 import { container } from './container/ServiceContainer';
-import { MessageRow, TelegramIndexerDB } from './db/TelegramIndexerDB';
+import { ChatOverview, MessageRow, TelegramIndexerDB } from './db/TelegramIndexerDB';
 import { MainDB } from './db/MainDB';
 import { TelegramDownloadManager, getDownloadableDocument } from './TelegramDownloadManager';
 import { LoggerFactory } from './logging/Logger';
 import { __APP_CONFIG__ } from '../app-env';
 
 export type AuthStatus = 'disconnected' | 'waiting_code' | 'waiting_password' | 'connected' | 'authenticating';
+
+/** A chat as the UI lists it: the index overview plus whether a pass over it is running right now. */
+export interface TelegramChatStatus extends ChatOverview {
+	indexing_now: boolean;
+}
+
+/** Where the periodic indexing cycle stands. Times are epoch ms. */
+export interface IndexingCycleStatus {
+	running: boolean;
+	/** Chat being indexed at the moment, null between chats or while idle. */
+	currentChatId: string | null;
+	lastRunAt: number | null;
+	/** When the next cycle is due; null while one runs or nothing is scheduled (signed out). */
+	nextRunAt: number | null;
+}
+
+export interface TelegramChatsResponse {
+	chats: TelegramChatStatus[];
+	cycle: IndexingCycleStatus;
+}
 
 export interface TelegramIndexerSearchResult {
 	hash: string;
@@ -37,8 +57,16 @@ export class TelegramIndexerService {
 	private tempPhoneCodeHash: string | null = null;
 
 	private isIndexing = false;
+	/** Chat whose history is being fetched right now, see IndexingCycleStatus.currentChatId. */
+	private indexingChatId: string | null = null;
+	private lastCycleAt: number | null = null;
+	private nextCycleAt: number | null = null;
+	private nextCycleTimer: NodeJS.Timeout | null = null;
+	/** Chats asked to be indexed without waiting for the timer; they go first in the next cycle. */
+	private readonly priorityChats = new Set<string>();
 	private readonly BATCH_SIZE = 50;
 	private readonly RATE_LIMIT_DELAY = 1000;
+	private readonly CYCLE_INTERVAL_MS = 5 * 60 * 1000;
 	/** Search hits confirmed to exist within this window are trusted without asking Telegram again. */
 	private readonly MEDIA_VERIFY_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -213,12 +241,35 @@ export class TelegramIndexerService {
 
 	// -- Chat Management --
 
-	public getDiscoveredChats() {
-		return this.db.getAllChats();
+	public getDiscoveredChats(): TelegramChatsResponse {
+		const chats = this.db.getChatsOverview().map((c) => ({ ...c, indexing_now: c.id === this.indexingChatId }));
+		return { chats, cycle: this.getCycleStatus() };
 	}
 
+	private getCycleStatus(): IndexingCycleStatus {
+		return {
+			running: this.isIndexing,
+			currentChatId: this.indexingChatId,
+			lastRunAt: this.lastCycleAt,
+			nextRunAt: this.isIndexing ? null : this.nextCycleAt,
+		};
+	}
+
+	/** Enabling a chat also indexes it right away instead of waiting for the next cycle. */
 	public setChatIndexing(chatId: string, enabled: boolean) {
 		this.db.setChatIndexing(chatId, enabled);
+		if (enabled) this.requestIndexing(chatId);
+	}
+
+	/**
+	 * Indexes the chat as soon as possible: a new cycle starts now with it first, or, if one is running,
+	 * right after it ends. Nothing happens while signed out (the cycle resumes on sign-in).
+	 */
+	public requestIndexing(chatId: string) {
+		if (!this.db.isIndexingEnabled(chatId)) throw new Error('Indexing is disabled for this chat');
+		this.priorityChats.add(chatId);
+		if (this.isIndexing) return; // the running cycle schedules the next one immediately, see runIndexingLoop
+		this.runIndexingLoop();
 	}
 
 	// -- Client Actions --
@@ -235,6 +286,11 @@ export class TelegramIndexerService {
 		// Just a safeguard if client is not connected
 		if (this.isIndexing || !this.client || !this.client.connected) return;
 		this.isIndexing = true;
+		if (this.nextCycleTimer) {
+			clearTimeout(this.nextCycleTimer);
+			this.nextCycleTimer = null;
+		}
+		this.nextCycleAt = null;
 
 		try {
 			const dialogs = await this.getAllDialogs();
@@ -258,14 +314,26 @@ export class TelegramIndexerService {
 				this.db.registerChat(chatId, name, type);
 			}
 
-			const enabledChats = this.db.getIndexingEnabledChats();
+			// Chats asked for explicitly go first; the set is cleared as they are taken
+			const requested = new Set(this.priorityChats);
+			this.priorityChats.clear();
+			const enabledChats = this.db
+				.getIndexingEnabledChats()
+				.sort((a, b) => Number(requested.has(b.id)) - Number(requested.has(a.id)) || (a.title ?? '').localeCompare(b.title ?? ''));
 			this.logger.info(`Found ${enabledChats.length} chats enabled for indexing.`);
 
 			for (const chat of enabledChats) {
 				// Find the dialog object again or use collected map
 				const dialog = dialogs.find((d) => d.id?.toString() === chat.id);
-				if (dialog) {
+				if (!dialog) {
+					this.db.recordChatCheck(chat.id, Date.now(), 'Chat not found among the account dialogs');
+					continue;
+				}
+				this.indexingChatId = chat.id;
+				try {
 					await this.indexDialog(dialog, chat.title);
+				} finally {
+					this.indexingChatId = null;
 				}
 			}
 
@@ -274,8 +342,12 @@ export class TelegramIndexerService {
 			this.logger.error('Error during indexing cycle:', error);
 		} finally {
 			this.isIndexing = false;
-			// Schedule next run in 5 minutes (user said "consultas periodicas")
-			setTimeout(() => this.runIndexingLoop(), 5 * 60 * 1000);
+			this.indexingChatId = null;
+			this.lastCycleAt = Date.now();
+			// Next cycle in CYCLE_INTERVAL_MS, or right away when a chat was requested meanwhile
+			const delay = this.priorityChats.size > 0 ? 0 : this.CYCLE_INTERVAL_MS;
+			this.nextCycleAt = Date.now() + delay;
+			this.nextCycleTimer = setTimeout(() => this.runIndexingLoop(), delay);
 		}
 	}
 
@@ -362,6 +434,8 @@ export class TelegramIndexerService {
 		this.logger.info(`Indexing ${chatName} (ID: ${chatId}) starting from ${lastId}...`);
 
 		let hasMore = true;
+		/** The error that stopped the pass, kept for the chats list; null when it ran to the end. */
+		let lastError: string | null = null;
 
 		// Correct strategy:
 		// Use `minId: lastId` (and `limit` for batching).
@@ -457,7 +531,7 @@ export class TelegramIndexerService {
 
 				if (messagesToInsert.length > 0) {
 					this.db.insertMessages(messagesToInsert);
-					this.db.updateLastMessageId(chatId, maxIdInBatch);
+					this.db.updateLastMessageId(chatId, maxIdInBatch, Date.now());
 					lastId = maxIdInBatch;
 				} else {
 					// We got messages but none were suitable or all were old?
@@ -486,10 +560,13 @@ export class TelegramIndexerService {
 					await new Promise((resolve) => setTimeout(resolve, (waitSeconds + 1) * 1000));
 				} else {
 					this.logger.error(`Error fetching history for ${chatName}:`, err);
+					lastError = err instanceof Error ? err.message : String(err);
 					hasMore = false; // Abort this chat on other errors
 				}
 			}
 		}
+
+		this.db.recordChatCheck(chatId, Date.now(), lastError);
 	}
 
 	private async fetchWithFloodWait<T>(fn: () => Promise<T>): Promise<T> {

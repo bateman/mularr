@@ -10,6 +10,30 @@ export interface Chat {
 export interface IndexingProgress {
 	chat_id: string;
 	last_message_id: number;
+	/** Epoch ms of the end of the last indexing pass over the chat (null if never visited). */
+	last_checked_at: number | null;
+	/** Epoch ms of the last pass that stored new messages (null if none did). */
+	last_indexed_at: number | null;
+	/** Message of the error that ended the last pass; null when it went fine. */
+	last_error: string | null;
+}
+
+/** A chat plus what the index holds for it, see getChatsOverview. Every `_at` is epoch ms. */
+export interface ChatOverview extends Chat {
+	/** Indexed messages (text or media). */
+	message_count: number;
+	/** Indexed messages carrying media. */
+	media_count: number;
+	/** Sum of the indexed file sizes, in bytes. */
+	media_size: number;
+	/** Forum topics known for the chat (0 for non-forum chats). */
+	topic_count: number;
+	last_message_id: number;
+	/** Date of the newest indexed message (null while nothing is indexed). */
+	last_message_at: number | null;
+	last_checked_at: number | null;
+	last_indexed_at: number | null;
+	last_error: string | null;
 }
 
 export interface MessageInput {
@@ -167,11 +191,19 @@ export class TelegramIndexerDB {
 			);
 		`);
 
-		// Migration: add error_message column if it doesn't exist (for existing DBs)
-		try {
-			this.db.exec('ALTER TABLE active_downloads ADD COLUMN error_message TEXT');
-		} catch {
-			// Column already exists — ignore
+		// Migrations: columns added after the tables shipped (each fails harmlessly once it exists)
+		const migrations = [
+			'ALTER TABLE active_downloads ADD COLUMN error_message TEXT',
+			'ALTER TABLE indexing_progress ADD COLUMN last_checked_at INTEGER',
+			'ALTER TABLE indexing_progress ADD COLUMN last_indexed_at INTEGER',
+			'ALTER TABLE indexing_progress ADD COLUMN last_error TEXT',
+		];
+		for (const sql of migrations) {
+			try {
+				this.db.exec(sql);
+			} catch {
+				// Column already exists — ignore
+			}
 		}
 
 		// The account this instance signs in with: a single row, see TelegramAccount
@@ -341,14 +373,27 @@ export class TelegramIndexerDB {
 		return row ? row.last_message_id : 0;
 	}
 
-	public updateLastMessageId(chatId: string, lastMessageId: number) {
+	/** Advances the cursor; `indexedAt` (epoch ms) is given when the pass stored new messages. */
+	public updateLastMessageId(chatId: string, lastMessageId: number, indexedAt: number | null = null) {
 		this.db
 			.prepare(
-				`INSERT INTO indexing_progress (chat_id, last_message_id)
-				 VALUES (?, ?)
-				 ON CONFLICT(chat_id) DO UPDATE SET last_message_id = ?`
+				`INSERT INTO indexing_progress (chat_id, last_message_id, last_indexed_at)
+				 VALUES (?, ?, ?)
+				 ON CONFLICT(chat_id) DO UPDATE SET last_message_id = excluded.last_message_id,
+				 	last_indexed_at = COALESCE(excluded.last_indexed_at, last_indexed_at)`
 			)
-			.run(chatId, lastMessageId, lastMessageId);
+			.run(chatId, lastMessageId, indexedAt);
+	}
+
+	/** Records the end of an indexing pass over the chat: when it finished and the error that ended it, if any. */
+	public recordChatCheck(chatId: string, checkedAt: number, error: string | null) {
+		this.db
+			.prepare(
+				`INSERT INTO indexing_progress (chat_id, last_message_id, last_checked_at, last_error)
+				 VALUES (?, 0, ?, ?)
+				 ON CONFLICT(chat_id) DO UPDATE SET last_checked_at = excluded.last_checked_at, last_error = excluded.last_error`
+			)
+			.run(chatId, checkedAt, error);
 	}
 
 	public registerTopic(chatId: string, topicId: number, topicName: string) {
@@ -483,6 +528,30 @@ export class TelegramIndexerDB {
 
 	public getAllChats(): Chat[] {
 		return this.db.prepare('SELECT * FROM chats').all() as Chat[];
+	}
+
+	/** Every chat with its index counters and progress, see ChatOverview. Message dates come out as epoch ms. */
+	public getChatsOverview(): ChatOverview[] {
+		return this.db
+			.prepare(
+				`SELECT c.id, c.title, c.type, c.indexing_enabled,
+					COALESCE(m.message_count, 0) AS message_count,
+					COALESCE(m.media_count, 0)   AS media_count,
+					COALESCE(m.media_size, 0)    AS media_size,
+					m.last_message_at,
+					COALESCE(t.topic_count, 0)   AS topic_count,
+					COALESCE(p.last_message_id, 0) AS last_message_id,
+					p.last_checked_at, p.last_indexed_at, p.last_error
+				 FROM chats c
+				 LEFT JOIN (
+					SELECT chat_id, COUNT(*) AS message_count, SUM(has_media) AS media_count,
+						SUM(COALESCE(file_size, 0)) AS media_size, MAX(date) * 1000 AS last_message_at
+					FROM messages_content GROUP BY chat_id
+				 ) m ON m.chat_id = c.id
+				 LEFT JOIN (SELECT chat_id, COUNT(*) AS topic_count FROM topics GROUP BY chat_id) t ON t.chat_id = c.id
+				 LEFT JOIN indexing_progress p ON p.chat_id = c.id`
+			)
+			.all() as ChatOverview[];
 	}
 
 	public setChatIndexing(chatId: string, enabled: boolean) {

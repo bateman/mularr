@@ -1,0 +1,122 @@
+.telegram-chats-table {
+	height: 100%;
+	min-height: 200px;
+	display: flex;
+	flex-direction: column;
+
+	.header {
+		margin-bottom: 10px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 6px 10px;
+	}
+
+	.header-title {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		min-width: 0;
+	}
+
+	.cycle-note {
+		font-size: 0.85em;
+		color: var(--text-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.header-tools {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+
+		.filter-input {
+			width: 180px;
+		}
+
+		.only-indexing {
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			white-space: nowrap;
+			cursor: pointer;
+		}
+
+		.ui-btn {
+			min-width: 80px;
+		}
+
+		.ui-columns-btn {
+			min-width: 22px;
+			margin-left: 0;
+		}
+	}
+
+	.ui-list {
+		thead th {
+			padding: 4px;
+			text-align: left;
+		}
+
+		tbody td {
+			padding: 4px;
+		}
+
+		td.muted {
+			color: var(--text-muted);
+		}
+
+		td.chat-error {
+			max-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.empty-cell {
+			text-align: center;
+			padding: 20px;
+			color: var(--text-muted);
+		}
+	}
+
+	.chat-status {
+		font-weight: bold;
+		white-space: nowrap;
+
+		&.is-indexing {
+			color: #008000;
+		}
+
+		&.is-ignored {
+			color: #808080;
+		}
+
+		&.is-running {
+			color: #0066cc;
+		}
+	}
+
+	.chat-error {
+		color: #cc0000;
+		font-size: 0.9em;
+	}
+
+	.row-actions {
+		display: inline-flex;
+		gap: 4px;
+
+		.ui-btn {
+			min-width: 70px;
+		}
+	}
+
+	.mobile-action {
+		min-width: 60px;
+		padding: 2px 5px;
+	}
+}

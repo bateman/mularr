@@ -67,31 +67,5 @@
 	.connected-panel {
 		height: 100%;
 		min-height: 200px;
-		display: flex;
-		flex-direction: column;
-
-		.header {
-			margin-bottom: 10px;
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-		}
-
-		.ui-list {
-			thead {
-				th {
-					padding: 4px;
-					text-align: left;
-				}
-			}
-
-			tbody {
-				tr {
-					td {
-						padding: 4px;
-					}
-				}
-			}
-		}
 	}
 }

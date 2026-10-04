@@ -10,7 +10,8 @@ import { __APP_CONFIG__ } from '../app-env';
 import { CHUNK_STATUS, type ChunkInfo, type MediaCategory, type TransferSource, type TransferSourceNameCount } from '../types/MediaTypes';
 import type { SpeedSample } from '../types/StatsTypes';
 import type { DownloadStatus } from '../services/TelegramDownloadManager';
-import type { Chat, MessageRow } from '../services/db/TelegramIndexerDB';
+import type { Chat, IndexingProgress, MessageRow } from '../services/db/TelegramIndexerDB';
+import type { IndexingCycleStatus, TelegramChatsResponse } from '../services/TelegramIndexerService';
 import { buildEd2kLink } from '../services/eD2kTools';
 import { MockRandom } from './MockRandom';
 import * as F from './fixtures';
@@ -23,6 +24,10 @@ const MIN_STEP_MS = 250;
 /** Cap on a single step, so a suspended process doesn't complete every download at once when it resumes. */
 const MAX_STEP_MS = 60_000;
 const MAX_LOG_LINES = 500;
+/** Period of the simulated Telegram indexing cycle, as the real service's. */
+const TELEGRAM_CYCLE_MS = 5 * 60_000;
+/** How long an on-demand pass over a chat shows as "indexing now". */
+const TELEGRAM_INDEX_PASS_MS = 4000;
 
 export interface MockServer extends AmuleServer {
 	ecid: number;
@@ -139,6 +144,10 @@ export class MockWorld {
 	private readonly uploadQueue: AmuleUpDownClient[];
 	/** Indexed Telegram messages keyed by `${chatId}:${messageId}`. */
 	private readonly telegramMessages = new Map<string, MessageRow>();
+	/** Where the simulated indexer left each chat, by chat id; absent while never visited. */
+	private readonly telegramProgress = new Map<string, Omit<IndexingProgress, 'chat_id'>>();
+	/** The simulated indexing cycle: a requested chat is "indexed" for a few seconds, then gains a message. */
+	private telegramCycle: IndexingCycleStatus = { running: false, currentChatId: null, lastRunAt: null, nextRunAt: null };
 	private readonly telegramDownloads = new Map<string, DownloadStatus>();
 	private readonly telegramCruise = new Map<string, number>();
 	private readonly logLines: string[] = [];
@@ -197,6 +206,17 @@ export class MockWorld {
 
 		this.telegramChats = F.TELEGRAM_CHATS.map((c) => ({ ...c }));
 		for (const file of F.TELEGRAM_FILES) this.registerTelegramMessage(file);
+		for (const p of F.TELEGRAM_CHAT_PROGRESS) {
+			const chat = this.telegramChats[p.chatIndex];
+			this.telegramProgress.set(chat.id, {
+				last_message_id: Math.max(0, ...[...this.telegramMessages.values()].filter((m) => m.chat_id === chat.id).map((m) => m.message_id)),
+				last_checked_at: Date.now() - p.checkedMinutesAgo * 60_000,
+				last_indexed_at: p.indexedMinutesAgo === null ? null : Date.now() - p.indexedMinutesAgo * 60_000,
+				last_error: p.error ?? null,
+			});
+		}
+		this.telegramCycle.lastRunAt = Date.now() - 3 * 60_000;
+		this.telegramCycle.nextRunAt = this.telegramCycle.lastRunAt + TELEGRAM_CYCLE_MS;
 		for (const { fileIndex, state } of F.TELEGRAM_DOWNLOADS) {
 			const file = F.TELEGRAM_FILES[fileIndex];
 			const hash = `telegram:${this.telegramChats[file.chatIndex].id}:${file.messageId}`;
@@ -770,6 +790,49 @@ export class MockWorld {
 		return [...this.telegramMessages.values()].filter(matches).sort((a, b) => b.date - a.date);
 	}
 
+	/** The chats list as the real service builds it: counters from the indexed messages plus the simulated progress. */
+	getTelegramChatsOverview(): TelegramChatsResponse {
+		this.advance();
+		const chats = this.telegramChats.map((chat) => {
+			const rows = [...this.telegramMessages.values()].filter((m) => m.chat_id === chat.id);
+			const media = rows.filter((m) => m.has_media);
+			const progress = this.telegramProgress.get(chat.id);
+			return {
+				...chat,
+				message_count: rows.length,
+				media_count: media.length,
+				media_size: media.reduce((sum, m) => sum + (m.file_size ?? 0), 0),
+				topic_count: new Set(rows.filter((m) => m.topic_id).map((m) => m.topic_id)).size,
+				last_message_id: progress?.last_message_id ?? 0,
+				last_message_at: rows.length > 0 ? Math.max(...rows.map((m) => m.date)) * 1000 : null,
+				last_checked_at: progress?.last_checked_at ?? null,
+				last_indexed_at: progress?.last_indexed_at ?? null,
+				last_error: progress?.last_error ?? null,
+				indexing_now: this.telegramCycle.currentChatId === chat.id,
+			};
+		});
+		return { chats, cycle: { ...this.telegramCycle } };
+	}
+
+	/** Simulates an on-demand pass over the chat: "indexing" for a few seconds, then one new message and a clean check. */
+	requestTelegramIndexing(chatId: string): void {
+		const chat = this.telegramChats.find((c) => c.id === chatId);
+		if (!chat || this.telegramCycle.running) return;
+		this.telegramCycle = { running: true, currentChatId: chatId, lastRunAt: this.telegramCycle.lastRunAt, nextRunAt: null };
+		setTimeout(() => {
+			const row = this.registerSyntheticTelegramMessage(chat.title);
+			const now = Date.now();
+			const progress = this.telegramProgress.get(chatId);
+			this.telegramProgress.set(chatId, {
+				last_message_id: Math.max(progress?.last_message_id ?? 0, row.message_id),
+				last_checked_at: now,
+				last_indexed_at: now,
+				last_error: null,
+			});
+			this.telegramCycle = { running: false, currentChatId: null, lastRunAt: now, nextRunAt: now + TELEGRAM_CYCLE_MS };
+		}, TELEGRAM_INDEX_PASS_MS).unref();
+	}
+
 	getTelegramDownload(hash: string): DownloadStatus | undefined {
 		this.advance();
 		return this.telegramDownloads.get(hash);
@@ -831,11 +894,12 @@ export class MockWorld {
 		return row;
 	}
 
-	private registerSyntheticTelegramMessage(query: string): void {
+	/** Adds a made-up indexed message matching `query`; `chatTitle` pins the chat, else an enabled one is picked. */
+	private registerSyntheticTelegramMessage(query: string, chatTitle?: string): MessageRow {
 		const enabled = this.telegramChats.filter((c) => c.indexing_enabled);
-		const chat = this.rng.pick(enabled.length > 0 ? enabled : this.telegramChats);
+		const chat = this.telegramChats.find((c) => c.title === chatTitle) ?? this.rng.pick(enabled.length > 0 ? enabled : this.telegramChats);
 		const kind: SearchKind = inferSearchKind(query) ?? (this.rng.chance(0.6) ? 'video' : this.rng.pick(['audio', 'document', 'software'] as const));
-		this.registerTelegramMessage({
+		return this.registerTelegramMessage({
 			chatIndex: this.telegramChats.indexOf(chat),
 			messageId: this.nextSyntheticMessageId++,
 			topicName: this.rng.chance(0.4) ? titleCase(query) : null,

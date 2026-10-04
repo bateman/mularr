@@ -284,6 +284,16 @@ export const TELEGRAM_CHATS: Chat[] = [
 	{ id: '-1001234567893', title: 'Friends & Family', type: 'group', indexing_enabled: 0 },
 ];
 
+/**
+ * Where the mock indexer left each chat (by index into TELEGRAM_CHATS), as minutes before start-up; a chat
+ * without an entry was never visited. `error` makes the last pass look failed.
+ */
+export const TELEGRAM_CHAT_PROGRESS: { chatIndex: number; checkedMinutesAgo: number; indexedMinutesAgo: number | null; error?: string }[] = [
+	{ chatIndex: 0, checkedMinutesAgo: 3, indexedMinutesAgo: 3 },
+	{ chatIndex: 1, checkedMinutesAgo: 4, indexedMinutesAgo: 47 },
+	{ chatIndex: 2, checkedMinutesAgo: 5, indexedMinutesAgo: 1440, error: 'RPCError 400: CHANNEL_INVALID (caused by messages.GetHistory)' },
+];
+
 export interface FixtureTelegramFile {
 	/** Index into TELEGRAM_CHATS. */
 	chatIndex: number;

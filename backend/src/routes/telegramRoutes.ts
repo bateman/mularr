@@ -14,6 +14,7 @@ export const telegramRoutes = () => {
 
 	router.get('/chats', controller.getChats);
 	router.put('/chats/:chatId/indexing', controller.updateChatIndexing);
+	router.post('/chats/:chatId/index', controller.indexChatNow);
 
 	return router;
 };
