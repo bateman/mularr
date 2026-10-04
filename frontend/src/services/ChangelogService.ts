@@ -14,8 +14,9 @@ export function isUnstableVersion(version: string): boolean {
 
 /**
  * "What's new" flow: decides which changelog entries have not been notified
- * yet (localStorage marker with the highest entry id shown), opens the dialog
- * and owns the "show on startup" preference that the dialog and Settings edit.
+ * yet (localStorage marker with the highest entry id the user has closed the
+ * dialog on), opens the dialog and owns the "show on startup" preference that
+ * the dialog and Settings edit.
  */
 export class ChangelogService {
 	private readonly prefs = inject(LocalPrefsService);
@@ -57,11 +58,11 @@ export class ChangelogService {
 	}
 
 	private open(versions: ChangelogVersion[], title: string): void {
-		this.markAllSeen();
 		this.dialogService.open({
 			title,
 			width: '640px',
 			render: (close) => ChangelogDialog({ versions, onClose: close }),
+			onClose: () => this.markAllSeen(),
 		});
 	}
 }
