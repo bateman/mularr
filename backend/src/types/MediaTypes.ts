@@ -59,6 +59,14 @@ export interface MediaTransfer {
 	categoryName?: string | null;
 	/** ISO timestamp of when the download was added, when tracked. */
 	addedOn?: string | null;
+	/** ISO timestamp of when the download was seen complete, when tracked (null for old records). */
+	completedOn?: string | null;
+	/** Bytes uploaded to other peers over the file's lifetime (aMule's all-time stats), when the provider shares it. */
+	uploadedTotal?: number;
+	/** Seed ratio (uploadedTotal/size) after which Sonarr/Radarr may remove the download; set by them per download. Null: no ratio limit. */
+	seedRatioLimit?: number | null;
+	/** Minutes of sharing after completion after which they may remove it. Null: no time limit. */
+	seedTimeLimit?: number | null;
 	provider?: string;
 	/** Resolved absolute path to the file on disk. Populated by MediaProviderService. */
 	filePath?: string;

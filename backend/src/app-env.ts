@@ -52,6 +52,19 @@ export interface AppConfig {
 		chatId?: string;
 		topicId?: number;
 	};
+	/**
+	 * Seed limits: how long a finished download keeps being shared before a client of the qBittorrent API
+	 * (Sonarr/Radarr) may remove it, as a torrent client stops seeding. Both 0: removable right after import,
+	 * so they move the file and drop the download at once. Otherwise they copy the file on import and remove
+	 * the download, and its file, once either limit is reached. A client can override them per download
+	 * (torrents/setShareLimits).
+	 */
+	seeding: {
+		/** Uploaded/size ratio (aMule's all-time upload stats); 0 disables. */
+		ratioLimit: number;
+		/** Minutes since completion; 0 disables. */
+		timeLimitMinutes: number;
+	};
 	gluetun: {
 		enabled: boolean;
 		/** Control server base URL, without trailing slash. */
@@ -86,6 +99,17 @@ export interface AppConfig {
 function envString(name: string): string | undefined {
 	const value = process.env[name];
 	return value === undefined || value === '' ? undefined : value;
+}
+
+/** Non-negative decimal number, or `fallback` when unset. */
+function envNumber(name: string, fallback: number): number {
+	const raw = envString(name);
+	if (raw === undefined) return fallback;
+	const value = Number(raw.trim());
+	if (!Number.isFinite(value) || value < 0) {
+		throw new Error(`Invalid ${name}="${raw}": expected a number >= 0`);
+	}
+	return value;
 }
 
 function envInt(name: string): number | undefined;
@@ -165,6 +189,10 @@ function loadConfig(): AppConfig {
 			jwtSecret: envString('JWT_SECRET'),
 		},
 		telegramBot: telegramBotToken ? { token: telegramBotToken, chatId: envString('TELEGRAM_CHAT_ID'), topicId: envInt('TELEGRAM_TOPIC_ID') } : undefined,
+		seeding: {
+			ratioLimit: envNumber('SEED_RATIO_LIMIT', 0),
+			timeLimitMinutes: envInt('SEED_TIME_LIMIT_MINUTES', 0),
+		},
 		gluetun: {
 			enabled: envBool('GLUETUN_ENABLED'),
 			api: (envString('GLUETUN_API') ?? 'http://localhost:8000/v1').replace(/\/$/, ''),

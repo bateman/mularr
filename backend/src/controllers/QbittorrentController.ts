@@ -5,8 +5,9 @@ import { MediaProviderService } from '../services/mediaprovider';
 import { ExtensionsService } from '../services/ExtensionsService';
 import { AmuledService } from '../services/AmuledService';
 import { AuthService } from '../services/AuthService';
-import { hashToBtih, extractFileRefFromMagnet, clientHashMatchesMularrHash } from './qbittorrentMappings';
+import { hashToBtih, extractFileRefFromMagnet, clientHashMatchesMularrHash, seedStats, parseShareLimit } from './qbittorrentMappings';
 import { LoggerFactory } from '../services/logging/Logger';
+import { __APP_CONFIG__ } from '../app-env';
 
 /**
  * ArrController provides a qBittorrent-compatible API for Sonarr and Radarr.
@@ -93,21 +94,25 @@ export class QbittorrentController {
 
 		if (tr) {
 			const savePath = getCatByName(categories, tr.categoryName ?? '')?.path || config.incomingDir;
+			const seed = seedStats(tr, __APP_CONFIG__.seeding);
+			const completedAt = tr.completedOn ? Date.parse(tr.completedOn) : NaN;
 			const properties = {
 				addition_date: 0,
 				comment: '',
-				completion_date: tr.statusId === 9 ? Math.floor(Date.now() / 1000) : 0,
+				completion_date: tr.statusId === 9 ? Math.floor((Number.isFinite(completedAt) ? completedAt : Date.now()) / 1000) : 0,
 				created_by: '',
 				dl_speed: tr.speed || 0,
 				eta: tr.timeLeft || 0,
 				isPrivate: false,
 				peers: tr.sourceCount || 0,
 				save_path: savePath,
-				seeding_time: 0,
+				seeding_time: seed.seeding_time,
 				seeds: tr.sourceCount || 0,
 				seeds_total: tr.sourceCount || 0,
+				share_ratio: seed.ratio,
 				total_downloaded: tr.completed || 0,
 				total_size: tr.size || 0,
+				total_uploaded: tr.uploadedTotal || 0,
 				up_limit: -1,
 				up_speed: 0,
 				up_speed_avg: 0,
@@ -235,14 +240,12 @@ export class QbittorrentController {
 					added_on: Math.floor(Date.now() / 1000),
 					eta: t.timeLeft || 0,
 					category: t.categoryName,
-					// Report a "seed limit reached" ratio so Sonarr removes the
-					// download after import. Sonarr only removes when state is
-					// pausedUP/stoppedUP AND HasReachedSeedLimit (ratio_limit>=0
-					// && ratio_limit-ratio<=0.001); its -2 (use-global) default
-					// never trips since we expose no global max-ratio, so report
-					// 0/0. Only consulted for completed pausedUP items.
-					ratio: 0,
-					ratio_limit: 0,
+					uploaded: t.uploadedTotal || 0,
+					// Real ratio (aMule's all-time upload count over the size) and the seed limits
+					// Sonarr/Radarr set on the download, or the configured ones. Without limits the
+					// download is removable right after import, so they move the file and delete the
+					// download; with one, they copy the file and remove it once the limit is reached.
+					...seedStats(t, __APP_CONFIG__.seeding),
 				};
 			});
 
@@ -358,6 +361,36 @@ export class QbittorrentController {
 		}
 	};
 
+	// qBittorrent API: POST /api/v2/torrents/setShareLimits
+	// Sonarr/Radarr call it right after adding a download when their indexer has a Seed Ratio and/or
+	// Seed Time (minutes) set; they later read the limits back from torrents/info to decide when the
+	// download may be removed. -2 (use the client's global limit) and -1 (none) both mean no limit here.
+	setShareLimits = async (req: Request, res: Response) => {
+		this.logger.debug('Set share limits requested');
+		try {
+			const { hashes, ratioLimit, seedingTimeLimit } = req.body;
+			if (!hashes) return res.status(400).send('No hashes provided');
+			if (hashes === 'all') return res.status(400).send('Setting share limits for all torrents is not supported');
+			const ratio = parseShareLimit(ratioLimit);
+			const minutes = parseShareLimit(seedingTimeLimit);
+			const transfers = await this.mediaProviderService.getTransfers();
+			for (const hash of (hashes as string).split('|')) {
+				if (!hash) continue;
+				const match = transfers.list.find((t) => clientHashMatchesMularrHash(t.hash, hash));
+				const found = this.mediaProviderService.setSeedLimits(match?.hash ?? hash, ratio, minutes);
+				if (!found) {
+					this.logger.warn(`Share limits requested for an unknown download: ${hash}`);
+					return res.status(404).send('Torrent hash was not found');
+				}
+				this.logger.info(`Seed limits for ${match?.hash ?? hash}: ratio ${ratio ?? 'none'}, time ${minutes === null ? 'none' : `${minutes} min`}`);
+			}
+			res.send('Ok.');
+		} catch (e: any) {
+			this.logger.error('QbittorrentController setShareLimits Error:', e);
+			res.status(500).send(e.message);
+		}
+	};
+
 	// qBittorrent API: POST /api/v2/torrents/delete
 	deleteTorrent = async (req: Request, res: Response) => {
 		this.logger.debug('Delete torrent requested');
@@ -385,10 +418,19 @@ export class QbittorrentController {
 	getPreferences = async (req: Request, res: Response) => {
 		this.logger.debug('Preferences requested');
 		const config = await this.amuledService.getConfig();
+		const { ratioLimit, timeLimitMinutes } = __APP_CONFIG__.seeding;
 		res.json({
 			save_path: config.incomingDir,
 			temp_path: config.tempDir,
 			dht: true,
+			// The configured limits, as qBittorrent's global ones. Only read for torrents reporting -2,
+			// which torrents/info never does (it resolves them itself); kept coherent anyway.
+			max_ratio_enabled: ratioLimit > 0,
+			max_ratio: ratioLimit > 0 ? ratioLimit : -1,
+			max_seeding_time_enabled: timeLimitMinutes > 0,
+			max_seeding_time: timeLimitMinutes > 0 ? timeLimitMinutes : -1,
+			max_inactive_seeding_time_enabled: false,
+			max_inactive_seeding_time: -1,
 		});
 	};
 

@@ -11,6 +11,15 @@ export interface DownloadDbRecord {
 	category_name: string | null;
 	added_at: string;
 	is_completed: number;
+	/** ISO timestamp of when the download was first seen complete; null for records completed before the column existed. */
+	completed_at?: string | null;
+	/**
+	 * Seed limits Sonarr/Radarr set on this download (qBittorrent torrents/setShareLimits, from the Seed Ratio and Seed
+	 * Time fields of their indexer). Null: no limit of that kind. See qbittorrentMappings.seedStats for how they are read.
+	 */
+	seed_ratio_limit?: number | null;
+	/** Minutes of sharing after completion. */
+	seed_time_limit?: number | null;
 	provider?: string;
 	/**
 	 * JSON snapshot of the MediaSearchResult the download was added from, when it came from a search (see
@@ -101,6 +110,9 @@ export class MainDB {
 				category_name TEXT,
 				added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 				is_completed INTEGER DEFAULT 0,
+				completed_at DATETIME,
+				seed_ratio_limit REAL,
+				seed_time_limit INTEGER,
 				provider TEXT DEFAULT 'amule',
 				search_result TEXT
 			);
@@ -167,6 +179,13 @@ export class MainDB {
 			if (!dlTableInfo.some((col) => col.name === 'search_result')) {
 				this.db.prepare('ALTER TABLE downloads ADD COLUMN search_result TEXT').run();
 			}
+			if (!dlTableInfo.some((col) => col.name === 'completed_at')) {
+				this.db.prepare('ALTER TABLE downloads ADD COLUMN completed_at DATETIME').run();
+			}
+			if (!dlTableInfo.some((col) => col.name === 'seed_ratio_limit')) {
+				this.db.prepare('ALTER TABLE downloads ADD COLUMN seed_ratio_limit REAL').run();
+				this.db.prepare('ALTER TABLE downloads ADD COLUMN seed_time_limit INTEGER').run();
+			}
 
 			const blTableInfo = this.db.prepare('PRAGMA table_info(blacklist)').all() as any[];
 			const hasSize = blTableInfo.some((col) => col.name === 'size');
@@ -209,17 +228,29 @@ export class MainDB {
 		}
 	}
 
+	/** Stores the seed limits of a download (see DownloadDbRecord.seed_ratio_limit); null clears a limit. */
+	public setDownloadSeedLimits(hash: string, ratioLimit: number | null, timeLimitMinutes: number | null) {
+		this.db.prepare('UPDATE downloads SET seed_ratio_limit = ?, seed_time_limit = ? WHERE hash = ?').run(ratioLimit, timeLimitMinutes, hash);
+	}
+
 	/** Attaches the search-result snapshot (see DownloadDbRecord.search_result) to a download. */
 	public setDownloadSearchResult(hash: string, searchResultJson: string) {
 		this.db.prepare('UPDATE downloads SET search_result = ? WHERE hash = ?').run(searchResultJson, hash);
 	}
 
+	/** Marks the completion state. completed_at is set the first time a download is marked complete and cleared when it is unmarked. */
 	public updateDownloadCompletion(hash: string, isCompleted: boolean, name?: string, size?: number) {
+		const completedAt = isCompleted ? new Date().toISOString() : null;
 		if (name !== undefined && size !== undefined) {
-			this.db.prepare('UPDATE downloads SET is_completed = ?, name = ?, size = ? WHERE hash = ?').run(isCompleted ? 1 : 0, name, size, hash);
+			this.db
+				.prepare('UPDATE downloads SET is_completed = ?, completed_at = COALESCE(completed_at, ?), name = ?, size = ? WHERE hash = ?')
+				.run(isCompleted ? 1 : 0, completedAt, name, size, hash);
 		} else {
-			this.db.prepare('UPDATE downloads SET is_completed = ? WHERE hash = ?').run(isCompleted ? 1 : 0, hash);
+			this.db
+				.prepare('UPDATE downloads SET is_completed = ?, completed_at = COALESCE(completed_at, ?) WHERE hash = ?')
+				.run(isCompleted ? 1 : 0, completedAt, hash);
 		}
+		if (!isCompleted) this.db.prepare('UPDATE downloads SET completed_at = NULL WHERE hash = ?').run(hash);
 	}
 
 	public deleteDownload(hash: string) {

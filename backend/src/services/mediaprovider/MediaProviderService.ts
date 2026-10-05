@@ -13,6 +13,14 @@ import { HispashareMediaProvider } from './adapters/HispashareMediaProvider';
 import type { MediaCategory, IMediaProvider, MediaSearchResult, MediaTransfer, MediaTransfersResponse, SearchProviderId } from './types';
 import { LoggerFactory } from '../logging/Logger';
 
+/** The source of a move is not on disk (typically already moved away by Sonarr/Radarr on import). */
+class FileNotFoundError extends Error {
+	constructor(readonly path: string) {
+		super(`file not found on disk: ${path}`);
+		this.name = 'FileNotFoundError';
+	}
+}
+
 /**
  * How long a transfers snapshot is served from cache. Building one chains several EC requests,
  * reads amule.conf and has side effects (completion detection, events), and it is requested by
@@ -71,7 +79,7 @@ export class MediaProviderService {
 		for (const r of perProvider) {
 			if (r.status === 'fulfilled') combined.push(...r.value);
 		}
-		this.applySearchResults(combined);
+		this.applyDownloadRecords(combined);
 
 		let categories: MediaCategory[] = [];
 		try {
@@ -101,24 +109,40 @@ export class MediaProviderService {
 	}
 
 	/**
-	 * Fills sourceName/webUrl from the search-result snapshot kept on the download record (see
-	 * DownloadDbRecord.search_result), for transfers whose provider did not set them itself.
+	 * Fills in what the download record keeps and the providers don't: the seed limits, and sourceName/webUrl
+	 * from the search-result snapshot (see DownloadDbRecord.search_result) when the provider did not set them.
 	 */
-	private applySearchResults(transfers: MediaTransfer[]): void {
-		const byHash = new Map<string, string>();
-		for (const d of this.db.getAllDownloads()) if (d.search_result) byHash.set(d.hash.toLowerCase(), d.search_result);
-		if (byHash.size === 0) return;
+	private applyDownloadRecords(transfers: MediaTransfer[]): void {
+		const byHash = new Map<string, DownloadDbRecord>();
+		for (const d of this.db.getAllDownloads()) byHash.set(d.hash.toLowerCase(), d);
 		for (const t of transfers) {
-			const json = t.hash ? byHash.get(t.hash.toLowerCase()) : undefined;
-			if (!json) continue;
+			const record = t.hash ? byHash.get(t.hash.toLowerCase()) : undefined;
+			if (!record) continue;
+			t.seedRatioLimit = record.seed_ratio_limit ?? null;
+			t.seedTimeLimit = record.seed_time_limit ?? null;
+			if (!record.search_result) continue;
 			try {
-				const r = JSON.parse(json) as Partial<MediaSearchResult>;
+				const r = JSON.parse(record.search_result) as Partial<MediaSearchResult>;
 				if (!t.sourceName && r.sourceName) t.sourceName = r.sourceName;
 				if (!t.webUrl && r.webUrl) t.webUrl = r.webUrl;
 			} catch {
 				// A corrupt snapshot only loses the label
 			}
 		}
+	}
+
+	// ---- Seed limits -----------------------------------------------------------
+
+	/**
+	 * Sets the seed limits of a download (see DownloadDbRecord.seed_ratio_limit). Null removes a limit.
+	 * Resolves false when no download record has that hash.
+	 */
+	setSeedLimits(hash: string, ratioLimit: number | null, timeLimitMinutes: number | null): boolean {
+		const key = hash.toLowerCase();
+		if (!this.db.getDownload(key)) return false;
+		this.db.setDownloadSeedLimits(key, ratioLimit, timeLimitMinutes);
+		this.invalidateTransfers();
+		return true;
 	}
 
 	// ---- Download management ---------------------------------------------------
@@ -249,15 +273,17 @@ export class MediaProviderService {
 		}
 
 		if (moveFiles && dbRecord?.is_completed && dbRecord.name) {
+			const incomingDir = await this.getIncomingDir();
+			const srcPath = this.resolveFilePath(dbRecord.name, oldCat?.path, incomingDir);
+			const destPath = this.resolveFilePath(dbRecord.name, newCat?.path, incomingDir);
 			try {
-				const incomingDir = await this.getIncomingDir();
-				const srcPath = this.resolveFilePath(dbRecord.name, oldCat?.path, incomingDir);
-				const destPath = this.resolveFilePath(dbRecord.name, newCat?.path, incomingDir);
-
 				const wasMoved = await this.moveFile(srcPath, destPath);
 				if (wasMoved) this.logger.info(`Moved: ${srcPath} -> ${destPath}`);
 			} catch (e: any) {
-				this.logger.error('Error moving file:', e);
+				// Sonarr/Radarr move (not copy) the file when we report pausedUP with the seed limit
+				// reached, so by the time they switch the category the source is usually gone. Expected.
+				if (e instanceof FileNotFoundError) this.logger.warn(`Skipping move, ${e.message}`);
+				else this.logger.error(`Error moving file ${srcPath} -> ${destPath}:`, e);
 			}
 		}
 		this.invalidateTransfers();
@@ -336,7 +362,7 @@ export class MediaProviderService {
 		if (srcPath === destPath) return false;
 
 		if (!fs.existsSync(srcPath)) {
-			throw new Error(`File not found on disk`);
+			throw new FileNotFoundError(srcPath);
 		}
 
 		const destDir = nodePath.dirname(destPath);

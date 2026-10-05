@@ -63,6 +63,16 @@ export const CHANGELOG: ChangelogVersion[] = [
 				type: 'fix',
 				text: 'Telegram: a chat the account has left or that no longer exists is disabled automatically, and messages of disabled chats are left out of searches, so they no longer cause errors.',
 			},
+			{
+				id: 14,
+				type: 'feature',
+				text: 'Seed limits for Sonarr/Radarr: the qBittorrent API reports the real upload ratio of each finished download and honours the Seed Ratio / Seed Time set per indexer in Sonarr/Radarr, with global defaults in the SEED_RATIO_LIMIT and SEED_TIME_LIMIT_MINUTES environment variables. With a limit, the file is copied on import and keeps being shared until the limit is reached; without one, it is moved and the download removed right away, as before.',
+			},
+			{
+				id: 15,
+				type: 'fix',
+				text: 'Removing a finished download no longer sends a delete to aMule for a file it already considers complete, which could bring the daemon down.',
+			},
 		],
 	},
 ];
