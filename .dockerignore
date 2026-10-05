@@ -4,7 +4,6 @@ dist
 .vscode
 *.log
 .env
-database.sqlite
 frontend/dist
 backend/dist
 backend/public

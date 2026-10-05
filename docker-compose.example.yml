@@ -22,8 +22,9 @@ services:
         environment:
             # All environment variables are optional, the values specified here are the defaults which will be used if not provided. Set these if you want to customize the behavior or integrate with other services.
 
-            # Path to the SQLite database file. You can change this if you want to store the database in a different location or use an external database (just make sure the path is writable by the container and update the path accordingly).
-            - DATABASE_PATH=/app/data/database.sqlite
+            # Directory where Mularr keeps its data: the SQLite databases, the aMule configuration (amule.conf, known.met, ...) and the JWT secret. Make sure it is backed by a volume (see above) and writable by the container.
+            # DATABASE_PATH (path to the SQLite file) is deprecated: it still works, but logs a warning at startup. Use DATA_DIR instead.
+            - DATA_DIR=/app/data
 
             # Port for the mularr web/api
             - PORT=8940
@@ -52,6 +53,13 @@ services:
             - AMULE_SHAREDDIR_RECURSIVE= # example: /my-storage/library;/my-storage/series
             - AMULE_SHAREDDIR_EXPLICIT= # example: /my-storage/manual-share
             - AMULE_RESTART_INTERVAL_HOURS=12 # How often (in hours) the monitoring service automatically restarts the aMule daemon. Set to `0` to disable.
+            # Seed limits: how long a finished download keeps being shared before Sonarr/Radarr (using Mularr as a qBittorrent download
+            # client) may remove it. With both at 0 (default) they move the file into the library and delete the download right after
+            # import. Set a ratio (uploaded/size, e.g. 1) and/or a number of minutes since completion (e.g. 4320 for 3 days) to keep
+            # sharing instead: they then copy the file on import and remove the download, and its file, once either limit is reached.
+            # The Seed Ratio / Seed Time of an indexer in Sonarr/Radarr, when set, override these for the downloads grabbed from it.
+            - SEED_RATIO_LIMIT=0
+            - SEED_TIME_LIMIT_MINUTES=0
 
             # Auth. The web-UI login and the API_KEY (machine-to-machine) auth are independent:
             #   - Interactive login (the web UI login page) is ENABLED only when BOTH AUTH_USERNAME and AUTH_PASSWORD are set.

@@ -1,5 +1,6 @@
 import { inject, component, Link, pathMatches } from 'chispa';
 import { AuthApiService } from '../services/AuthApiService';
+import { ChangelogService } from '../services/ChangelogService';
 import { StatsContainer } from './panels/Stats';
 import { NetworkContainer } from './panels/Network';
 import { ConnectionContainer } from './panels/Connection';
@@ -20,6 +21,7 @@ export interface SidebarProps {
 
 export const Sidebar = component<SidebarProps>((props) => {
 	const authService = inject(AuthApiService);
+	const changelogService = inject(ChangelogService);
 
 	const handleLogout = () => {
 		authService.logout();
@@ -33,6 +35,8 @@ export const Sidebar = component<SidebarProps>((props) => {
 		{ to: '/search', icon: '/assets/icons/Search.ico', label: 'Search' },
 		{ to: '/shared', icon: '/assets/icons/SharedFiles.ico', label: 'Shared' },
 		{ to: '/categories', emoji: '🏷️', label: 'Categories' },
+		{ to: '/indexer-feed', emoji: '📡', label: 'Indexer Feed' },
+		{ to: '/telegram', icon: '/assets/icons/ext/Telegram.png', label: 'Telegram' },
 		{ to: '/extensions', emoji: '🧩', label: 'Extensions' },
 		{ to: '/settings', icon: '/assets/icons/Preferences.ico', label: 'Settings' },
 	];
@@ -58,7 +62,12 @@ export const Sidebar = component<SidebarProps>((props) => {
 		connectionContainer: ConnectionContainer(),
 		networkContainer: NetworkContainer(),
 		statsContainer: StatsContainer(),
-		appVersion: { inner: `v${__APP_MANIFEST__.version}` },
+		appVersion: {
+			inner: `${changelogService.isUnstable ? '⚠️ ' : ''}v${changelogService.appVersion}`,
+			classes: { 'sidebar-version-unstable': changelogService.isUnstable },
+			title: changelogService.isUnstable ? 'Unstable version. Click to view the changelog' : 'View changelog',
+			onclick: () => changelogService.openFull(),
+		},
 		logoutBtn: {
 			onclick: handleLogout,
 			style: { display: () => (authService.isLoggedIn() ? '' : 'none') },

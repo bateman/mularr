@@ -1,15 +1,17 @@
-import { inject, component, signal, refBindInput, refBindSelect, onUnmount, effect, computed, componentList, Signal } from 'chispa';
+import { inject, component, signal, refBindInput, refBindSelect, onUnmount, effect, computed, componentList, Signal, SelectOption } from 'chispa';
 import { getFileIcon } from '../../utils/icons';
 import { fbytes } from '../../utils/formats';
 import { ListManager, RowSelectionManager } from '../../utils/ListManager';
+import { TableColumns } from '../../utils/TableColumns';
 import { smartLoad } from '../../utils/scheduling';
+import { sourceInfoContent } from '../../utils/sourceInfo';
 import { DialogService } from '../../services/DialogService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { MediaApiService, MediaSearchResult } from '../../services/MediaApiService';
-import { ExtensionsApiService } from '../../services/ExtensionsApiService';
 import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
 import { ContextMenuItem, ContextMenuService } from '../../services/ContextMenuService';
 import { ClipboardService } from '../../services/ClipboardService';
+import { ColumnsMenuService } from '../../services/ColumnsMenuService';
 import { BlacklistService } from '../../services/BlacklistService';
 import { Ed2kDownloadForm } from './Ed2kDownloadForm';
 import tpl from './SearchView.html';
@@ -26,7 +28,7 @@ function buildContextMenuActions(
 	const targets = selected.size > 0 ? list.filter((r) => r.hash && selected.has(r.hash)) : [result];
 	const multi = targets.length > 1;
 
-	const ed2kLinks = targets.filter((r) => r.provider === 'amule' && r.link).map((r) => r.link!);
+	const ed2kLinks = targets.filter((r) => r.link?.startsWith('ed2k://')).map((r) => r.link!);
 	if (ed2kLinks.length > 0) {
 		actions.push({
 			label: ed2kLinks.length > 1 ? `Copy ${ed2kLinks.length} ed2k Links` : 'Copy ed2k Link',
@@ -70,7 +72,7 @@ const MOBILE_SORT_OPTIONS: { value: string; label: string; col: keyof MediaSearc
 ];
 
 interface ResultsRowsProps {
-	onDownload: (hash: string) => void;
+	onDownload: (result: MediaSearchResult) => void;
 	downloadingHashes: Signal<Set<string>>;
 	selectionMgr: RowSelectionManager;
 	onBlacklisted: () => void;
@@ -128,7 +130,7 @@ const ResultsRows = componentList<MediaSearchResult, ResultsRowsProps>(
 						mobDownloadBtn: {
 							onclick: (e: MouseEvent) => {
 								e.stopPropagation();
-								onDownload(res.get().hash);
+								onDownload(res.get());
 							},
 							disabled: isDisabled,
 							inner: downloadBtnLabel,
@@ -149,11 +151,11 @@ const ResultsRows = componentList<MediaSearchResult, ResultsRowsProps>(
 						return `${((r.completeSourceCount / r.sourceCount) * 100).toFixed(0)}% (${r.completeSourceCount})`;
 					},
 				},
-				sourceInfoCol: { inner: () => res.get().sourceName || '' },
+				sourceInfoCol: { inner: () => sourceInfoContent(res.get()) },
 				downloadMiniBtn: {
 					onclick: (e: MouseEvent) => {
 						e.stopPropagation();
-						onDownload(res.get().hash);
+						onDownload(res.get());
 					},
 					disabled: isDisabled,
 					inner: downloadBtnLabel,
@@ -168,6 +170,8 @@ export const SearchView = component(() => {
 	const apiService = inject(MediaApiService);
 	const dialogService = inject(DialogService);
 	const prefs = inject(LocalPrefsService);
+	const columnsMenu = inject(ColumnsMenuService);
+	const columns = new TableColumns({ prefs, prefsKey: 'search' });
 
 	const statusLog = signal('');
 	const searchQuery = signal('');
@@ -184,12 +188,15 @@ export const SearchView = component(() => {
 		prefs.set('search.type', searchType.get());
 	});
 
-	// Provider filter (only shown when the Telegram indexer extension is enabled)
+	// Provider filter: one option per search provider, shown only once a second one joins aMule
 	const providerFilter = signal('all');
-	const telegramEnabled = signal(false);
-	inject(ExtensionsApiService)
-		.getExtensions()
-		.then((list) => telegramEnabled.set(list.some((x) => x.type === 'telegram_indexer' && !!x.enabled)))
+	const providerFilterOptions = signal<SelectOption[]>([]);
+	inject(MediaApiService)
+		.getSearchProviders()
+		.then((providers) => {
+			if (providers.length > 1)
+				providerFilterOptions.set([{ value: 'all', label: 'All' }, ...providers.map((p) => ({ value: p, label: getProviderName(p) }))]);
+		})
 		.catch(() => {});
 
 	const visibleResults = computed(() => {
@@ -280,14 +287,18 @@ export const SearchView = component(() => {
 	// Initial load: check if a search is already in progress
 	startPolling();
 
-	const download = async (hash?: string) => {
+	const download = async (result: MediaSearchResult) => {
+		const hash = result.hash;
 		if (!hash) return;
 		try {
 			const s = new Set(downloadingHashes.get());
 			s.add(hash);
 			downloadingHashes.set(s);
 
-			await apiService.addDownload(hash);
+			// aMule's own results go by bare hash, which seeds the download with the sources of the search; results
+			// found by other providers (Hispashare) are not in aMule's last search, so they need the whole ed2k link.
+			const link = result.provider !== 'amule' && result.link?.startsWith('ed2k://') ? result.link : hash;
+			await apiService.addDownload(link);
 			console.log('Download added successfully');
 			loadResults();
 			mgr.clearSelection();
@@ -327,6 +338,8 @@ export const SearchView = component(() => {
 		thSources: { onclick: () => mgr.sort('sourceCount') },
 		thCompleted: { onclick: () => mgr.sort('completeSourceCount') },
 		thType: { onclick: () => mgr.sort('type') },
+		resultsTable: { _ref: (el) => columns.attach(el) },
+		columnsBtn: { onclick: (e) => columnsMenu.show(e.currentTarget as HTMLElement, columns) },
 
 		searchInput: {
 			_ref: refBindInput(searchQuery),
@@ -340,15 +353,14 @@ export const SearchView = component(() => {
 		searchBtn: { onclick: performSearch },
 		refreshBtn: { onclick: loadResults },
 		providerFilterBlock: {
-			style: { display: () => (telegramEnabled.get() ? '' : 'none') },
+			style: { display: () => (providerFilterOptions.get().length > 0 ? '' : 'none') },
 		},
 		providerFilterSelect: {
-			_ref: refBindSelect(providerFilter),
+			_ref: refBindSelect(providerFilter, providerFilterOptions),
 		},
 		resultsList: { inner: statusLog },
 		resultsContainer: {
-			inner: () =>
-				ResultsRows(visibleResults, { onDownload: (hash) => download(hash), downloadingHashes, selectionMgr: mgr, onBlacklisted: loadResults }),
+			inner: () => ResultsRows(visibleResults, { onDownload: (r) => download(r), downloadingHashes, selectionMgr: mgr, onBlacklisted: loadResults }),
 		},
 		ed2kForm: Ed2kDownloadForm({ onAdded: loadResults }),
 		downloadSelectedBtn: {

@@ -128,6 +128,7 @@ export class MockAmuleService {
 	private finishDownload(record: DownloadDbRecord, entry: MockQueueEntry): void {
 		this.db.updateDownloadCompletion(record.hash, true, entry.name, entry.size);
 		record.is_completed = 1;
+		record.completed_at = new Date().toISOString();
 		record.name = entry.name;
 		record.size = entry.size;
 		const dir = this.world.categoryDir(record.category_name);
@@ -160,6 +161,8 @@ export class MockAmuleService {
 			priority: 0,
 			remaining: 0,
 			addedOn: record.added_at,
+			completedOn: record.completed_at ?? null,
+			uploadedTotal: this.world.shared.find((f) => f.fileHashHexString === record.hash)?.getAllXferred ?? 0,
 			timeLeft: 0,
 			categoryName: normalizeCategoryName(record.category_name, categories),
 			isCompleted: true,

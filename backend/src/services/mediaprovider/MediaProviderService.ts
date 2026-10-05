@@ -9,16 +9,17 @@ import { AppEvents, toDownloadEventPayload } from '../AppEvents';
 import { parseEd2kLink } from '../eD2kTools';
 import { AmuleMediaProvider } from './adapters/AmuleMediaProvider';
 import { TelegramMediaProvider } from './adapters/TelegramMediaProvider';
-import type {
-	MediaCategory,
-	IMediaProvider,
-	MediaTransfer,
-	MediaSearchResult,
-	MediaTransfersResponse,
-	MediaSearchResponse,
-	MediaSearchStatusResponse,
-} from './types';
+import { HispashareMediaProvider } from './adapters/HispashareMediaProvider';
+import type { MediaCategory, IMediaProvider, MediaSearchResult, MediaTransfer, MediaTransfersResponse, SearchProviderId } from './types';
 import { LoggerFactory } from '../logging/Logger';
+
+/** The source of a move is not on disk (typically already moved away by Sonarr/Radarr on import). */
+class FileNotFoundError extends Error {
+	constructor(readonly path: string) {
+		super(`file not found on disk: ${path}`);
+		this.name = 'FileNotFoundError';
+	}
+}
 
 /**
  * How long a transfers snapshot is served from cache. Building one chains several EC requests,
@@ -31,61 +32,25 @@ const TRANSFERS_CACHE_TTL_MS = 2000;
 
 export class MediaProviderService {
 	private readonly logger = LoggerFactory.create(this);
-	private providers: IMediaProvider[] = [];
+	/** Search fan-out lives in MediaSearchService, which reads the providers from here. */
+	public readonly providers: IMediaProvider[] = [];
 	private readonly db = container.get(MainDB);
 	private readonly events = container.get(AppEvents);
 	private readonly amuleService = container.get(AmuleService);
 	private readonly amuledService = container.get(AmuledService);
-	public readonly searchHistory = new SearchHistory();
 	private transfersCache: { snapshot: Promise<MediaTransfersResponse>; expiresAt: number } | null = null;
 
 	constructor() {
 		// Order matters: first matching provider wins for canHandleDownload
 		this.providers.push(new TelegramMediaProvider());
+		// Search-only (its files are downloaded by aMule) and reaches the internet, so it is left out in mock mode
+		if (!__APP_CONFIG__.mockMode) this.providers.push(new HispashareMediaProvider());
 		this.providers.push(new AmuleMediaProvider());
 	}
 
-	// ---- Search ----------------------------------------------------------------
-
-	async startSearch(query: string, _type?: string): Promise<void> {
-		await Promise.allSettled(this.providers.map((p) => p.startSearch(query)));
-		this.searchHistory.addEntry(query, query);
-		this.events.emit('search.started', { query });
-	}
-
-	async getSearchResults(): Promise<MediaSearchResponse> {
-		const perProvider = await Promise.allSettled(this.providers.map((p) => p.getSearchResults()));
-		const combined: MediaSearchResult[] = [];
-		for (const r of perProvider) {
-			if (r.status === 'fulfilled') {
-				combined.push(...r.value);
-				this.searchHistory.pushResults(r.value);
-			}
-		}
-		const { visible, blacklistedCount } = this.filterBlacklisted(combined);
-		return { raw: `Found ${visible.length} results`, list: visible, blacklistedCount };
-	}
-
-	/** Removes blacklisted results (see blacklistEntryMatches for the hash+size rule). */
-	private filterBlacklisted(results: MediaSearchResult[]): { visible: MediaSearchResult[]; blacklistedCount: number } {
-		const entries = this.db.getBlacklist();
-		if (entries.length === 0) return { visible: results, blacklistedCount: 0 };
-		const byHash = new Map(entries.map((e) => [e.hash.toLowerCase(), e]));
-		const visible = results.filter((r) => {
-			const entry = r.hash ? byHash.get(r.hash.toLowerCase()) : undefined;
-			return !entry || !blacklistEntryMatches(entry, r.size);
-		});
-		return { visible, blacklistedCount: results.length - visible.length };
-	}
-
-	async getSearchStatus(): Promise<MediaSearchStatusResponse> {
-		// Overall progress = minimum across providers (all must finish before we report 1.0)
-		const statuses = await Promise.allSettled(this.providers.map((p) => p.getSearchStatus()));
-		let min = 1;
-		for (const s of statuses) {
-			if (s.status === 'fulfilled') min = Math.min(min, s.value);
-		}
-		return { raw: `Search progress: ${(min * 100).toFixed(0)}%`, progress: min };
+	/** Ids of the providers a search reaches right now (see IMediaProvider.isAvailable), in fan-out order. */
+	public getAvailableSearchProviders(): SearchProviderId[] {
+		return this.providers.filter((p) => p.isAvailable()).map((p) => p.providerId as SearchProviderId);
 	}
 
 	// ---- Transfers -------------------------------------------------------------
@@ -114,6 +79,7 @@ export class MediaProviderService {
 		for (const r of perProvider) {
 			if (r.status === 'fulfilled') combined.push(...r.value);
 		}
+		this.applyDownloadRecords(combined);
 
 		let categories: MediaCategory[] = [];
 		try {
@@ -140,6 +106,43 @@ export class MediaProviderService {
 	async clearCompletedTransfers(hashes?: string[]): Promise<void> {
 		await Promise.allSettled(this.providers.map((p) => p.clearCompletedTransfers(hashes)));
 		this.invalidateTransfers();
+	}
+
+	/**
+	 * Fills in what the download record keeps and the providers don't: the seed limits, and sourceName/webUrl
+	 * from the search-result snapshot (see DownloadDbRecord.search_result) when the provider did not set them.
+	 */
+	private applyDownloadRecords(transfers: MediaTransfer[]): void {
+		const byHash = new Map<string, DownloadDbRecord>();
+		for (const d of this.db.getAllDownloads()) byHash.set(d.hash.toLowerCase(), d);
+		for (const t of transfers) {
+			const record = t.hash ? byHash.get(t.hash.toLowerCase()) : undefined;
+			if (!record) continue;
+			t.seedRatioLimit = record.seed_ratio_limit ?? null;
+			t.seedTimeLimit = record.seed_time_limit ?? null;
+			if (!record.search_result) continue;
+			try {
+				const r = JSON.parse(record.search_result) as Partial<MediaSearchResult>;
+				if (!t.sourceName && r.sourceName) t.sourceName = r.sourceName;
+				if (!t.webUrl && r.webUrl) t.webUrl = r.webUrl;
+			} catch {
+				// A corrupt snapshot only loses the label
+			}
+		}
+	}
+
+	// ---- Seed limits -----------------------------------------------------------
+
+	/**
+	 * Sets the seed limits of a download (see DownloadDbRecord.seed_ratio_limit). Null removes a limit.
+	 * Resolves false when no download record has that hash.
+	 */
+	setSeedLimits(hash: string, ratioLimit: number | null, timeLimitMinutes: number | null): boolean {
+		const key = hash.toLowerCase();
+		if (!this.db.getDownload(key)) return false;
+		this.db.setDownloadSeedLimits(key, ratioLimit, timeLimitMinutes);
+		this.invalidateTransfers();
+		return true;
 	}
 
 	// ---- Download management ---------------------------------------------------
@@ -270,15 +273,17 @@ export class MediaProviderService {
 		}
 
 		if (moveFiles && dbRecord?.is_completed && dbRecord.name) {
+			const incomingDir = await this.getIncomingDir();
+			const srcPath = this.resolveFilePath(dbRecord.name, oldCat?.path, incomingDir);
+			const destPath = this.resolveFilePath(dbRecord.name, newCat?.path, incomingDir);
 			try {
-				const incomingDir = await this.getIncomingDir();
-				const srcPath = this.resolveFilePath(dbRecord.name, oldCat?.path, incomingDir);
-				const destPath = this.resolveFilePath(dbRecord.name, newCat?.path, incomingDir);
-
 				const wasMoved = await this.moveFile(srcPath, destPath);
 				if (wasMoved) this.logger.info(`Moved: ${srcPath} -> ${destPath}`);
 			} catch (e: any) {
-				this.logger.error('Error moving file:', e);
+				// Sonarr/Radarr move (not copy) the file when we report pausedUP with the seed limit
+				// reached, so by the time they switch the category the source is usually gone. Expected.
+				if (e instanceof FileNotFoundError) this.logger.warn(`Skipping move, ${e.message}`);
+				else this.logger.error(`Error moving file ${srcPath} -> ${destPath}:`, e);
 			}
 		}
 		this.invalidateTransfers();
@@ -357,7 +362,7 @@ export class MediaProviderService {
 		if (srcPath === destPath) return false;
 
 		if (!fs.existsSync(srcPath)) {
-			throw new Error(`File not found on disk`);
+			throw new FileNotFoundError(srcPath);
 		}
 
 		const destDir = nodePath.dirname(destPath);
@@ -388,67 +393,5 @@ export class MediaProviderService {
 	private resolveFilePath(filename: string, catPath: string | undefined, incomingDir: string): string {
 		const dir = catPath || incomingDir;
 		return nodePath.join(dir, nodePath.basename(filename));
-	}
-}
-
-type MediaSearchResultsByHash = Record<string, MediaSearchResult>;
-
-interface SearchHistoryEntry {
-	id: string;
-	query: string;
-	timestamp: number;
-	results: MediaSearchResultsByHash;
-}
-
-/**
- * A simple in-memory cache for search results, keyed by query string.
- * Bad things will happend if and external service triggers a search on amule which is not handled by mularr
- */
-class SearchHistory {
-	private readonly searchesById: Record<string, SearchHistoryEntry> = {};
-	private current: SearchHistoryEntry | null = null;
-
-	addEntry(id: string, query: string, results: MediaSearchResultsByHash = {}) {
-		if (this.current) {
-			this.controlHistorySize();
-			this.searchesById[this.current.id] = this.current;
-		}
-		this.current = { id, query, timestamp: Date.now(), results };
-	}
-
-	private controlHistorySize() {
-		const MAX_HISTORY_SIZE = 10;
-		const entries = Object.values(this.searchesById);
-		if (entries.length > MAX_HISTORY_SIZE) {
-			// Sort by timestamp and remove the oldest entries
-			entries.sort((a, b) => a.timestamp - b.timestamp);
-			const excessCount = entries.length - MAX_HISTORY_SIZE;
-			for (let i = 0; i < excessCount; i++) {
-				delete this.searchesById[entries[i].id];
-			}
-		}
-	}
-
-	pushResults(results: MediaSearchResult[]) {
-		if (!this.current) return;
-		for (const r of results) {
-			this.current.results[r.hash] = r;
-		}
-	}
-
-	/**
-	 * Returns a read-only view of the search history, keyed by search ID.
-	 * The current search (if any) is not included in the returned object.
-	 */
-	getFullHistory() {
-		return this.searchesById as Readonly<typeof this.searchesById>;
-	}
-
-	deleteEntry(id: string) {
-		if (this.current?.id === id) {
-			this.current = null;
-		} else {
-			delete this.searchesById[id];
-		}
 	}
 }

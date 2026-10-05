@@ -10,7 +10,7 @@ if [ -f /etc/alpine-release ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AMULE_VERSION="3.0.1"
+AMULE_VERSION="3.1.0"
 
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update
@@ -21,8 +21,11 @@ sudo bash "${SCRIPT_DIR}/../install-amule-gh-release.sh" "${AMULE_VERSION}"
 echo "aMule ${AMULE_VERSION} installation complete."
 
 # -- Configuration Setup --
-# Dev uses default home directory for config
-CONF_DIR="$HOME/.aMule"
+# All dev runtime data lives in dev-data/ at the repository root (gitignored), laid out like the
+# production /app/data volume: mularr.db next to an amule/ config dir. The backend resolves
+# the same defaults in backend/src/app-env.ts, so no AMULE_CONFIG_DIR is needed in dev.
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CONF_DIR="${REPO_DIR}/dev-data/amule"
 mkdir -p "$CONF_DIR"
 
 if [ ! -f "$CONF_DIR/amule.conf" ]; then

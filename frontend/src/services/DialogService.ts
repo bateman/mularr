@@ -6,6 +6,7 @@ export interface DialogCustomOptions {
 	title: string;
 	width?: string;
 	render: (close: () => void) => Component;
+	onClose?: () => void;
 }
 
 export class DialogService {
@@ -50,13 +51,18 @@ export class DialogService {
 	}
 
 	public open(options: DialogCustomOptions) {
+		let closed = false;
+		const close = () => {
+			if (closed) return;
+			closed = true;
+			dialogInstance.unmount();
+			options.onClose?.();
+		};
 		const dialogInstance = DialogHost({
 			title: options.title,
 			width: options.width,
-			onClose: () => {
-				dialogInstance.unmount();
-			},
-			body: options.render(() => dialogInstance.unmount()),
+			onClose: close,
+			body: options.render(close),
 		});
 
 		dialogInstance.mount(document.body);

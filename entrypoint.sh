@@ -12,7 +12,7 @@ fi
 # For simplicity we hardcode the hash for 'secret' to match defaults.
 # MD5("secret") = 5ebe2294ecd0e0f08eab7690d2a6ee69
 
-CONF_DIR="${AMULE_CONFIG_DIR:-$HOME/.aMule}"
+CONF_DIR="${AMULE_CONFIG_DIR:-${DATA_DIR:-/app/data}/amule}"
 INCOMING_DIR="${AMULE_INCOMING_DIR:-$CONF_DIR/Incoming}"
 TEMP_DIR="${AMULE_TEMP_DIR:-$CONF_DIR/Temp}"
 

@@ -1,5 +1,53 @@
 import { createHash } from 'crypto';
 import { parseEd2kLink } from '../services/eD2kTools';
+import type { MediaTransfer } from '../types/MediaTypes';
+
+/** Seed limits as configured (see AppConfig.seeding); 0 means no limit of that kind. */
+export interface SeedLimits {
+	ratioLimit: number;
+	timeLimitMinutes: number;
+}
+
+/**
+ * Share limits as sent to torrents/setShareLimits (qBittorrent semantics: >= 0 a limit, -1 none, -2 the
+ * client's global one, which Mularr doesn't have). Only a real limit is kept; anything else clears it.
+ */
+export function parseShareLimit(raw: unknown): number | null {
+	const value = Number(raw);
+	return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Seeding fields of a torrents/info entry, as Sonarr/Radarr read them to decide whether a finished
+ * download may be removed (and, with it, whether they move or copy its file on import). They remove
+ * when state is pausedUP/stoppedUP and a limit is reached: `ratio >= ratio_limit` when ratio_limit >= 0,
+ * or `seeding_time >= seeding_time_limit` (minutes) when seeding_time_limit >= 0; -1 means no limit of
+ * that kind. The limits are the ones they set themselves on the download (see MediaTransfer.seedRatioLimit,
+ * from the Seed Ratio / Seed Time fields of their indexer), each falling back to the configured one
+ * (qBittorrent's -2, "use the global limit"). Without any, the ratio limit is 0, which the ratio always
+ * satisfies, so the download is removable right after import.
+ */
+export function seedStats(t: MediaTransfer, defaults: SeedLimits, now = Date.now()) {
+	const size = t.size || 0;
+	const ratio = size > 0 ? (t.uploadedTotal || 0) / size : 0;
+	// Seconds sharing the finished file; records completed before completedOn existed count from when they were added
+	const since = t.isCompleted ? Date.parse(t.completedOn ?? t.addedOn ?? '') : NaN;
+	const seedingTime = Number.isFinite(since) ? Math.max(0, Math.floor((now - since) / 1000)) : 0;
+	// A provider that doesn't share the file (uploadedTotal unset: Telegram, Hispashare) can never reach a
+	// ratio, so a ratio limit would keep the download forever; only the time limit applies to it.
+	const defaultRatio = defaults.ratioLimit > 0 ? defaults.ratioLimit : null;
+	const defaultTime = defaults.timeLimitMinutes > 0 ? defaults.timeLimitMinutes : null;
+	const ratioLimit = t.uploadedTotal !== undefined ? (t.seedRatioLimit ?? defaultRatio) : null;
+	const timeLimit = t.seedTimeLimit ?? defaultTime;
+	const hasLimit = ratioLimit !== null || timeLimit !== null;
+	return {
+		ratio: Math.round(ratio * 1000) / 1000,
+		seeding_time: seedingTime,
+		ratio_limit: !hasLimit ? 0 : (ratioLimit ?? -1),
+		seeding_time_limit: timeLimit ?? -1,
+		inactive_seeding_time_limit: -1,
+	};
+}
 
 export function hashToBtih(hash: string): string {
 	// Lowercase before hashing so the btih is identical whether computed from a

@@ -2,6 +2,8 @@ import { inject, component, signal, effect, refBindCheckbox, refBindInput, refBi
 import { AmuleApiService, SharedDirectoryEntry } from '../../services/AmuleApiService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { DialogService } from '../../services/DialogService';
+import { ChangelogService } from '../../services/ChangelogService';
+import { StarBanner } from '../../components/StarBanner';
 import { smartLoad } from '../../utils/scheduling';
 import { SharedDirsSettings } from './components/SharedDirsSettings';
 import { BlacklistSettings } from './components/BlacklistSettings';
@@ -12,6 +14,7 @@ export const SettingsView = component(() => {
 	const apiService = inject(AmuleApiService);
 	const prefs = inject(LocalPrefsService);
 	const dialogService = inject(DialogService);
+	const changelogService = inject(ChangelogService);
 
 	const theme = signal(prefs.getTheme());
 
@@ -30,6 +33,11 @@ export const SettingsView = component(() => {
 
 	effect(() => {
 		prefs.set('ui.transfers.useDetailedProgress', detailedTransferProgress.get());
+	});
+
+	const showChangelogOnStartup = signal(changelogService.getShowOnStartup());
+	effect(() => {
+		changelogService.setShowOnStartup(showChangelogOnStartup.get());
 	});
 
 	const nick = signal('');
@@ -153,6 +161,8 @@ export const SettingsView = component(() => {
 		themeSelect: { _ref: refBindSelect(theme) },
 		intervalInput: { _ref: refBindInput(interval) },
 		detailedTransferProgress: { _ref: refBindCheckbox(detailedTransferProgress) },
+		showChangelogOnStartup: { _ref: refBindCheckbox(showChangelogOnStartup) },
+		starBanner: { inner: StarBanner() },
 		nick: { _ref: refBindInput(nick) },
 		tcpPort: {
 			disabled: lockedPorts,

@@ -1,6 +1,6 @@
 import { container } from '../../container/ServiceContainer';
 import { AmuleService } from '../../AmuleService';
-import type { IMediaProvider, MediaSearchResult, MediaTransfer } from '../types';
+import type { IMediaProvider, MediaSearchResult, MediaTransfer, SearchCriteria } from '../types';
 import { LoggerFactory } from '../../logging/Logger';
 
 export class AmuleMediaProvider implements IMediaProvider {
@@ -8,12 +8,18 @@ export class AmuleMediaProvider implements IMediaProvider {
 	readonly providerId = 'amule';
 	private readonly amuleService = container.get(AmuleService);
 
+	/** aMule is what Mularr runs on, so it always takes part. */
+	isAvailable(): boolean {
+		return true;
+	}
+
 	canHandleDownload(link: string): boolean {
 		return !link.startsWith('telegram:');
 	}
 
-	async startSearch(query: string): Promise<void> {
-		await this.amuleService.startSearch(query);
+	/** eD2k searches by keywords only; the identifiers in the criteria are ignored. */
+	async startSearch(criteria: SearchCriteria): Promise<void> {
+		await this.amuleService.startSearch(criteria.query, criteria.amuleSearchType);
 	}
 
 	async getSearchResults(): Promise<MediaSearchResult[]> {

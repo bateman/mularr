@@ -1,0 +1,53 @@
+/* Column resize handles (added to every th by utils/TableColumns) and the columns picker button/menu. */
+
+.ui-col-resizer {
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 6px;
+	height: 100%;
+	cursor: col-resize;
+	touch-action: none;
+	user-select: none;
+	z-index: 1;
+}
+
+.ui-col-resizer:hover,
+.ui-col-resizer.dragging {
+	box-shadow: inset -2px 0 0 var(--ui-hl);
+}
+
+/* Small button that opens the columns menu, sits at the right end of the bar above a table */
+.ui-columns-btn {
+	--ui-btn-padding: 0 4px;
+	height: 18px;
+	min-width: 22px;
+	font-size: 12px;
+	line-height: 1;
+	margin-left: auto;
+	flex-shrink: 0;
+}
+
+/* Columns menu (reuses the context menu panel from ui-context-menu.css) */
+.cols-menu-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	max-height: 60vh;
+	overflow: auto;
+}
+
+.cols-menu-check {
+	margin: 0;
+	width: 13px;
+	height: 13px;
+	flex-shrink: 0;
+	pointer-events: none; /* the whole row toggles the column */
+}
+
+@media (max-width: 768px) {
+	.ui-col-resizer,
+	.ui-columns-btn {
+		display: none !important;
+	}
+}

@@ -1,0 +1,76 @@
+<div class="telegram-view ui-feature-layout-rows">
+	<div class="ui-panel-raised ui-feature-topbar">
+		<span style="font-weight: bold; margin-left: 5px;">Telegram</span>
+		<span class="status-text">
+			Status: <span data-cb="statusBadge" style="text-transform: capitalize;">Detecting...</span>
+		</span>
+		<span data-cb="phoneDisplay" class="status-text" style="display: none;">
+			Phone: <span data-cb="phoneText" style="font-weight: bold;"></span>
+		</span>
+		<div style="flex: 1;"></div>
+		<!-- Whether searches reach Telegram -->
+		<span class="ui-inline-input-block">
+			<span>Search provider:</span>
+			<span data-cb="searchEnabledState" style="font-weight: bold;"></span>
+			<button class="ui-btn" data-cb="btnToggleSearchEnabled"></button>
+		</span>
+		<button class="ui-btn" data-cb="btnRefresh">Refresh</button>
+		<button class="ui-btn" data-cb="btnLogout">Logout</button>
+	</div>
+
+	<!-- Error Banner -->
+	<div class="error-banner" data-cb="errorBanner"></div>
+
+	<!-- Content Area -->
+	<div class="ui-panel-raised content-area">
+
+		<!-- Login Form -->
+		<div data-cb="panelDisconnected" class="form-container login">
+			<div class="form-title" style="text-decoration: underline;">Telegram Login</div>
+
+			<div class="form-group">
+				<label>API ID (my.telegram.org):</label>
+				<input type="text" data-cb="inputApiId" class="ui-input">
+			</div>
+			<div class="form-group">
+				<label>API Hash:</label>
+				<input type="text" data-cb="inputApiHash" class="ui-input">
+			</div>
+			<div class="form-group" style="margin-bottom: 15px;">
+				<label>Phone Number (intl format):</label>
+				<input type="text" data-cb="inputPhone" class="ui-input" placeholder="+123456789">
+			</div>
+
+			<div style="display: flex; justify-content: flex-end;">
+				<button class="ui-btn" data-cb="btnStartAuth">Send Code</button>
+			</div>
+		</div>
+
+		<!-- Code Form -->
+		<div data-cb="panelWaitingCode" class="form-container auth">
+			<div class="form-title">Enter Verification Code</div>
+			<div class="form-group" style="margin-bottom: 15px;">
+				<label>Code sent to Telegram/SMS:</label>
+				<input type="text" data-cb="inputCode" class="ui-input">
+			</div>
+			<div style="display: flex; justify-content: flex-end;">
+				<button class="ui-btn" data-cb="btnSubmitCode">Submit</button>
+			</div>
+		</div>
+
+		<!-- Password Form -->
+		<div data-cb="panelWaitingPassword" class="form-container auth">
+			<div class="form-title">Two-Step Verification</div>
+			<div class="form-group" style="margin-bottom: 15px;">
+				<label>Cloud Password:</label>
+				<input type="password" data-cb="inputPassword" class="ui-input">
+			</div>
+			<div style="display: flex; justify-content: flex-end;">
+				<button class="ui-btn" data-cb="btnSubmitPassword">Login</button>
+			</div>
+		</div>
+
+		<!-- Connected: the chats table component -->
+		<div data-cb="panelConnected" class="connected-panel"></div>
+	</div>
+</div>

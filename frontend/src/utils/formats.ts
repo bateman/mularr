@@ -66,6 +66,16 @@ export function formatRemaining(remainingBytes?: number, speedBytesPerSec?: numb
 	return `${timeStr} (${sizeText})`;
 }
 
+/** "5 min ago" / "in 2 h" style distance from `now`; whole units, never seconds. `at` is an ISO string or epoch ms. */
+export function relativeTime(at: string | number, now: number): string {
+	const diffMs = (typeof at === 'number' ? at : new Date(at).getTime()) - now;
+	const abs = Math.abs(diffMs);
+	if (abs < 60_000) return diffMs <= 0 ? 'just now' : 'in less than a minute';
+	const minutes = Math.round(abs / 60_000);
+	const text = minutes < 60 ? `${minutes} min` : minutes < 60 * 48 ? `${Math.round(minutes / 60)} h` : `${Math.round(minutes / (60 * 24))} d`;
+	return diffMs < 0 ? `${text} ago` : `in ${text}`;
+}
+
 export function toString(val: any): string {
 	if (typeof val === 'boolean') return val ? 'Yes' : 'No';
 	if (typeof val === 'object' && val !== null) {

@@ -1,0 +1,85 @@
+<div class="telegram-chats-table">
+	<div class="header">
+		<div class="header-title">
+			<strong>Available Chats</strong>
+			<span class="cycle-note" data-cb="cycleNote"></span>
+		</div>
+		<div class="header-tools">
+			<input type="text" class="ui-input filter-input" data-cb="filterInput" placeholder="Filter chats..." />
+			<label class="only-indexing"><input type="checkbox" data-cb="onlyIndexingCheck" /> Only indexing</label>
+			<div class="mobile-only ui-inline-input-block">
+				<label>Sort:</label>
+				<select data-cb="mobileSortSelect" class="ui-input"></select>
+			</div>
+			<button class="ui-btn" data-cb="btnRefresh">Refresh List</button>
+			<button class="ui-btn ui-btn-icon ui-columns-btn" data-cb="columnsBtn" title="Choose columns">▦</button>
+		</div>
+	</div>
+
+	<div class="ui-table-container" style="flex: 1">
+		<table class="ui-list" data-cb="chatsTable">
+			<thead>
+				<tr>
+					<th data-cb="thChat" class="is-mobile-primary">Chat</th>
+					<th data-cb="thType" style="width: 70px">Type</th>
+					<th data-cb="thStatus" style="width: 110px; text-align: center">Status</th>
+					<th data-cb="thMessages" style="width: 85px; text-align: right">Messages</th>
+					<th data-cb="thFiles" style="width: 70px; text-align: right">Files</th>
+					<th data-cb="thSize" style="width: 80px; text-align: right">Size</th>
+					<th data-cb="thTopics" style="width: 60px; text-align: right">Topics</th>
+					<th data-cb="thLastMessage" style="width: 110px">Last message</th>
+					<th data-cb="thLastChecked" style="width: 110px">Last checked</th>
+					<th data-cb="thError">Last error</th>
+					<th style="width: 90px; text-align: center">Index</th>
+					<th style="width: 120px; text-align: center">Action</th>
+				</tr>
+			</thead>
+			<tbody data-cb="chatsList">
+				<tr data-cb="chatRow">
+					<td class="is-mobile-primary">
+						<span data-cb="chatNameText"></span>
+						<div class="mobile-info-block">
+							<div class="mobile-info-row">
+								<span data-cb="mobType"></span>
+								<span>·</span>
+								<span data-cb="mobCounts"></span>
+							</div>
+							<div class="mobile-info-row">
+								<span data-cb="mobChecked"></span>
+							</div>
+							<div class="mobile-info-row chat-error" data-cb="mobError"></div>
+							<div class="mobile-info-row" style="margin-top: 5px; gap: 10px">
+								<span data-cb="mobStatusBadge" class="chat-status"></span>
+								<div style="flex: 1"></div>
+								<button class="ui-btn mobile-action" data-cb="mobIndexBtn">Index now</button>
+								<button class="ui-btn mobile-action" data-cb="mobToggleBtn"></button>
+							</div>
+						</div>
+					</td>
+					<td data-cb="typeCol" class="muted"></td>
+					<td style="text-align: center">
+						<span data-cb="statusBadge" class="chat-status"></span>
+					</td>
+					<td data-cb="messagesCol" style="text-align: right"></td>
+					<td data-cb="filesCol" style="text-align: right"></td>
+					<td data-cb="sizeCol" style="text-align: right"></td>
+					<td data-cb="topicsCol" style="text-align: right"></td>
+					<td data-cb="lastMessageCol"></td>
+					<td data-cb="lastCheckedCol"></td>
+					<td data-cb="errorCol" class="chat-error"></td>
+					<td style="text-align: center">
+						<button class="ui-btn row-action" data-cb="indexBtn">Index now</button>
+					</td>
+					<td style="text-align: center">
+						<span class="row-actions">
+							<button class="ui-btn row-action" data-cb="toggleBtn"></button>
+						</span>
+					</td>
+				</tr>
+				<tr data-cb="emptyRow">
+					<td colspan="12" class="is-mobile-primary empty-cell" data-cb="emptyText"></td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+</div>

@@ -96,7 +96,8 @@
 
 	<!-- ── Active Transfers ───────────────────────────────────────────────── -->
 	<div class="ui-panel-raised dashboard-active">
-		<div class="ui-header-small">Active Transfers</div>
+		<div class="ui-header-small">Active Transfers <button class="ui-btn ui-btn-icon ui-columns-btn"
+				data-cb="activeColumnsBtn" title="Choose columns">▦</button></div>
 		<div class="active-summary-bar">
 			<span class="active-summary-item">
 				<span class="active-summary-label">Files</span>
@@ -131,10 +132,10 @@
 			</span>
 		</div>
 		<div class="ui-table-container dashboard-active-scroll">
-			<table class="ui-list">
+			<table class="ui-list" data-cb="activeTable">
 				<thead>
 					<tr>
-						<th style="width: 60px;">Source</th>
+						<th style="width: 60px;">Network</th>
 						<th class="is-mobile-primary">Filename</th>
 						<th style="text-align:right; width: 90px;">Speed</th>
 						<th style="width: 130px; min-width: 100px;">Progress</th>
@@ -183,9 +184,10 @@
 
 	<!-- ── Active Uploads ─────────────────────────────────────────────────── -->
 	<div class="ui-panel-raised dashboard-uploads">
-		<div class="ui-header-small">Active Uploads</div>
+		<div class="ui-header-small">Active Uploads <button class="ui-btn ui-btn-icon ui-columns-btn"
+				data-cb="uploadsColumnsBtn" title="Choose columns">▦</button></div>
 		<div class="ui-table-container dashboard-uploads-scroll">
-			<table class="ui-list">
+			<table class="ui-list" data-cb="uploadsTable">
 				<thead>
 					<tr>
 						<th>Client</th>

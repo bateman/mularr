@@ -8,7 +8,7 @@
  * the user's own recordings. No commercial titles, not even invented ones, and no scene-release formats
  * (BluRay/WEB-DL rips, release-group tags, "Setup.exe" installers).
  */
-import type { Chat } from '../services/db/TelegramIndexerDB';
+import type { Chat, TelegramAccount } from '../services/db/TelegramIndexerDB';
 
 /** Seed of the shared PRNG (see MockRandom). Change it to get a different, equally stable dataset. */
 export const MOCK_SEED = 20260912;
@@ -269,11 +269,29 @@ export const IP_DETAILS = {
 
 export const TELEGRAM_USER = { id: 123456789, firstName: 'Ada', lastName: 'Mockwell', username: 'ada_mockwell', phone: '34600123456' };
 
+/** Account the mock indexer starts with; the stored session is what makes it start as "connected". */
+export const TELEGRAM_ACCOUNT: TelegramAccount = {
+	apiId: 123456,
+	apiHash: '0123456789abcdef0123456789abcdef',
+	session: 'mock-session',
+	searchEnabled: true,
+};
+
 export const TELEGRAM_CHATS: Chat[] = [
 	{ id: '-1001234567890', title: 'Open Source ISOs', type: 'channel', indexing_enabled: 1 },
 	{ id: '-1001234567891', title: 'Public Domain & Open Cinema', type: 'channel', indexing_enabled: 1 },
 	{ id: '-1001234567892', title: 'Creative Commons Music', type: 'group', indexing_enabled: 1 },
 	{ id: '-1001234567893', title: 'Friends & Family', type: 'group', indexing_enabled: 0 },
+];
+
+/**
+ * Where the mock indexer left each chat (by index into TELEGRAM_CHATS), as minutes before start-up; a chat
+ * without an entry was never visited. `error` makes the last pass look failed.
+ */
+export const TELEGRAM_CHAT_PROGRESS: { chatIndex: number; checkedMinutesAgo: number; indexedMinutesAgo: number | null; error?: string }[] = [
+	{ chatIndex: 0, checkedMinutesAgo: 3, indexedMinutesAgo: 3 },
+	{ chatIndex: 1, checkedMinutesAgo: 4, indexedMinutesAgo: 47 },
+	{ chatIndex: 2, checkedMinutesAgo: 5, indexedMinutesAgo: 1440, error: 'RPCError 400: CHANNEL_INVALID (caused by messages.GetHistory)' },
 ];
 
 export interface FixtureTelegramFile {
