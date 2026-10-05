@@ -4,6 +4,6 @@ build/
 .env
 .DS_Store
 .chispa/
-database.sqlite
 *.bak
 dev-data/
+devcontainer-lock.json

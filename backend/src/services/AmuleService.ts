@@ -63,6 +63,8 @@ interface Download {
 	timeLeft?: number;
 	categoryName?: string | null;
 	addedOn?: string | null;
+	completedOn?: string | null;
+	uploadedTotal?: number;
 	chunkInfo?: ChunkInfo;
 	sources?: TransferSource[];
 	sourceNames?: TransferSourceNameCount[];
@@ -358,6 +360,7 @@ export class AmuleService {
 							// Also update name and size from file info just in case they were never set
 							this.db.updateDownloadCompletion(dbRecord.hash, true, completedFile.fileName, completedFile.sizeFull);
 							dbRecord.is_completed = 1;
+							dbRecord.completed_at = new Date().toISOString();
 							dbRecord.name = completedFile.fileName ?? '';
 							dbRecord.size = completedFile.sizeFull || 0;
 							this.logger.info('Marked file as completed in DB:', dbRecord.hash, dbRecord.name);
@@ -373,6 +376,9 @@ export class AmuleService {
 					const mbSize = (sizeFull / (1024 * 1024)).toFixed(2);
 					//console.log('File marked as completed in DB:', dbRecord.hash, dbRecord);
 					const link = buildEd2kLink(dbRecord.name, sizeFull, dbRecord.hash);
+					// aMule keeps sharing the finished file; its all-time upload count is what the qBittorrent
+					// API reports as the seed ratio to Sonarr/Radarr. Absent once the file left the shared list.
+					const sharedFile = findByHash(await getSharedFiles(), dbRecord.hash);
 
 					return {
 						rawLine: `> ${dbRecord.name} [${mbSize} MB] Completed 100%`,
@@ -391,6 +397,8 @@ export class AmuleService {
 						priority: 0,
 						remaining: 0,
 						addedOn: dbRecord.added_at,
+						completedOn: dbRecord.completed_at ?? null,
+						uploadedTotal: sharedFile?.getAllXferred ?? 0,
 						timeLeft: 0,
 						categoryName: normalizeCategoryName(dbRecord.category_name, categories),
 						isCompleted: true,
@@ -479,7 +487,7 @@ export class AmuleService {
 	private lastSearchResults: any[] = [];
 
 	async startSearch(query: string, type: string = 'Global') {
-		this.logger.info(`Starting Search for: ${query}`);
+		this.logger.info(`Starting (${type}) Search for: ${query}`);
 
 		try {
 			// Convert string type to enum if possible, default to Global
@@ -621,17 +629,41 @@ export class AmuleService {
 	async removeDownload(hash: string) {
 		this.logger.info('Removing download:', hash);
 
-		try {
-			await this.client.deleteDownload(Buffer.from(hash, 'hex'));
-			// Remove from DB if successfully deleted from client
-		} catch (e) {
-			this.logger.error('EC Client removeDownload failed:', e);
+		// Never send EC DELETE for a finished download. aMule keeps completed files in its download
+		// list (status COMPLETE) until the daemon restarts, and deleting one of those through EC
+		// makes amuled tear down the EC connection (seen in production as ECONNRESET right after the
+		// delete, with the daemon gone). The entry is harmless there: transfers are built from our
+		// DB records, so dropping the record hides it, and the file on disk is handled by the caller.
+		if (await this.isCompletedInDaemon(hash)) {
+			this.logger.info('Download already complete in aMule, skipping EC delete (record only):', hash);
+		} else {
+			try {
+				await this.client.deleteDownload(Buffer.from(hash, 'hex'));
+			} catch (e) {
+				this.logger.error('EC Client removeDownload failed:', e);
+			}
 		}
 
 		try {
 			this.db.deleteDownload(hash.toLowerCase());
 		} catch (e) {
 			this.logger.error('Failed to remove download from DB:', e);
+		}
+	}
+
+	/**
+	 * Whether aMule considers this download finished: our DB says so, or the daemon's download
+	 * queue still lists it with status COMPLETE (completion detected but not yet persisted).
+	 * A queue lookup failure counts as "not completed" so a regular cancel still goes through.
+	 */
+	private async isCompletedInDaemon(hash: string): Promise<boolean> {
+		if (this.db.getDownload(hash.toLowerCase())?.is_completed) return true;
+		try {
+			const queueFile = findByHash(await this.client.getDownloadQueue(), hash);
+			return queueFile?.fileStatus === FileStatus.COMPLETE;
+		} catch (e: any) {
+			this.logger.warn('Could not read download queue before delete:', e.message);
+			return false;
 		}
 	}
 

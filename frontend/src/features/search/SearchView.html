@@ -26,11 +26,7 @@
 
 		<div data-cb="providerFilterBlock" class="ui-inline-input-block" style="display: none;">
 			<label>Provider:</label>
-			<select data-cb="providerFilterSelect">
-				<option value="all">All</option>
-				<option value="amule">aMule</option>
-				<option value="telegram">Telegram</option>
-			</select>
+			<select data-cb="providerFilterSelect"></select>
 			<div class="ui-toolbar-separator" style="margin: 0 5px;"></div>
 		</div>
 
@@ -44,15 +40,17 @@
 			<label>Sort:</label>
 			<select data-cb="mobileSortSelect" class="ui-input"></select>
 		</div>
+
+		<button class="ui-btn ui-btn-icon ui-columns-btn" data-cb="columnsBtn" title="Choose columns">▦</button>
 	</div>
 
 	<div class="ui-table-container" style="flex: 1;">
-		<table class="ui-list">
+		<table class="ui-list" data-cb="resultsTable">
 			<thead>
 				<tr>
 					<th data-cb="thName" style="cursor: pointer" class="is-mobile-primary">Name</th>
-					<th data-cb="thProvider" style="cursor: pointer; width: 60px;">Provider</th>
-					<th data-cb="thSourceInfo" style="cursor: pointer">Provider Info</th>
+					<th data-cb="thProvider" style="cursor: pointer; width: 60px;" title="Where the result was found">Provider</th>
+					<th data-cb="thSourceInfo" style="cursor: pointer" title="Title, chat or other origin the provider reports for the release">Origin</th>
 					<th data-cb="thSize" style="cursor: pointer; text-align: right;">Size</th>
 					<th data-cb="thSources" style="cursor: pointer; text-align: right;">Availability</th>
 					<th data-cb="thCompleted" style="cursor: pointer; text-align: right;">Complete</th>

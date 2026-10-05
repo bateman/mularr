@@ -1,0 +1,71 @@
+.telegram-view {
+	height: 100%;
+	overflow: hidden;
+
+	.status-text {
+		margin-left: 10px;
+		white-space: nowrap;
+	}
+
+	.ui-feature-topbar {
+		flex-wrap: wrap;
+
+		.ui-btn {
+			min-width: 80px;
+		}
+	}
+
+	.error-banner {
+		padding: 10px;
+		background: #ffcccc;
+		color: #cc0000;
+		border: 1px solid #cc0000;
+	}
+
+	.content-area {
+		flex: 1;
+		min-height: 0;
+		padding: 10px;
+		overflow-y: auto;
+		background: var(--ui-face);
+	}
+
+	.form-container {
+		margin: 0 auto;
+
+		&.login {
+			max-width: 400px;
+		}
+
+		&.auth {
+			max-width: 300px;
+		}
+
+		.form-title {
+			margin-bottom: 15px;
+			font-weight: bold;
+		}
+
+		.form-group {
+			margin-bottom: 10px;
+
+			label {
+				display: block;
+				margin-bottom: 3px;
+			}
+
+			.ui-input {
+				width: 100%;
+			}
+		}
+
+		.ui-btn {
+			min-width: 100px;
+		}
+	}
+
+	.connected-panel {
+		height: 100%;
+		min-height: 200px;
+	}
+}

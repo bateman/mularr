@@ -23,8 +23,18 @@ export type {
 	MediaSearchResult,
 	MediaSearchResponse,
 	MediaSearchStatusResponse,
+	SearchProviderId,
 } from '../../../backend/src/types/MediaTypes';
 export type { SpeedSample } from '../../../backend/src/types/StatsTypes';
+export type {
+	IndexerFeedMediaType,
+	IndexerFeedItem,
+	IndexerFeedListResponse,
+	ArrSyncExtensionStatus,
+	ArrSyncStatusResponse,
+	WantedItem,
+	WantedListResponse,
+} from '../../../backend/src/types/IndexerFeedTypes';
 export type { AuthStatus } from '../../../backend/src/types/AuthTypes';
 
 /**

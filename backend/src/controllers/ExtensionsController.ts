@@ -16,11 +16,19 @@ export class ExtensionsController {
 
 	add = (req: Request, res: Response) => {
 		try {
-			const { name, url, type, enabled } = req.body;
-			const id = this.service.addExtension({ name, url, type, enabled: enabled ? 1 : 0 });
+			const { name, url, type, enabled, config } = req.body;
+			let parsedConfig: Record<string, unknown> | undefined;
+			if (config !== undefined && config !== null) {
+				const parsed = typeof config === 'string' ? JSON.parse(config) : config;
+				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+					return res.status(400).json({ error: 'config must be a JSON object' });
+				}
+				parsedConfig = parsed;
+			}
+			const id = this.service.addExtension({ name, url, type, enabled: enabled ? 1 : 0 }, parsedConfig);
 			res.json({ success: true, id: Number(id) });
 		} catch (e: any) {
-			res.status(500).json({ error: e.message });
+			res.status(400).json({ error: e.message });
 		}
 	};
 
@@ -55,6 +63,20 @@ export class ExtensionsController {
 			}
 			this.service.updateExtensionConfig(Number(id), parsed);
 			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
+		}
+	};
+
+	testConnection = async (req: Request, res: Response) => {
+		try {
+			const { type, url, config } = req.body;
+			const parsed = typeof config === 'string' ? JSON.parse(config) : config;
+			if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+				return res.status(400).json({ error: 'config must be a JSON object' });
+			}
+			const message = await this.service.testConnection(type, url, parsed);
+			res.json({ success: true, message });
 		} catch (e: any) {
 			res.status(400).json({ error: e.message });
 		}

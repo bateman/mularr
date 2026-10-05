@@ -4,6 +4,7 @@ import { MediaTransfer } from '../../services/MediaApiService';
 import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
 import { getFileIcon } from '../../utils/icons';
 import { fbytes, formatRemaining } from '../../utils/formats';
+import { sourceInfoContent } from '../../utils/sourceInfo';
 import { TransferProgressBar } from './TransferProgressBar';
 import { formatSourcesSummary } from './sourcesSummary';
 import { statusMap } from './transferStatus';
@@ -118,7 +119,7 @@ export const TransferDetailsDialog = component<TransferDetailsDialogProps>(({ tr
 		valSources: { inner: () => formatSourcesSummary(t.get()) },
 		valPriority: { inner: () => String(t.get().priority ?? 0) },
 		valCategory: { inner: categoryLabel },
-		valSourceInfo: { inner: () => t.get().sourceName || '-' },
+		valSourceInfo: { inner: () => sourceInfoContent(t.get(), '-') },
 		valAddedOn: { inner: addedOnText },
 		filePathRow: {
 			style: { display: () => (t.get().filePath ? '' : 'none') },

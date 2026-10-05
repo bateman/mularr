@@ -26,6 +26,7 @@ export const qbittorrentRoutes = () => {
 	router.get('/torrents/properties', controller.getProperties);
 	router.post('/torrents/createCategory', controller.createCategory);
 	router.post('/torrents/setCategory', controller.setCategory);
+	router.post('/torrents/setShareLimits', controller.setShareLimits);
 	router.post('/torrents/add', controller.addTorrent);
 	router.post('/torrents/delete', controller.deleteTorrent);
 

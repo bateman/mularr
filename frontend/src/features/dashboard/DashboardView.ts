@@ -3,6 +3,9 @@ import type { SpeedSample } from '../../services/DashboardApiService';
 import type { MediaTransfer } from '../../services/MediaApiService';
 import type { AmuleUpDownClient } from '../../services/AmuleApiService';
 import { WsService } from '../../services/WsService';
+import { LocalPrefsService } from '../../services/LocalPrefsService';
+import { ColumnsMenuService } from '../../services/ColumnsMenuService';
+import { TableColumns } from '../../utils/TableColumns';
 import { formatSpeed, fbytes, formatRemaining } from '../../utils/formats';
 import { getProviderIcon } from '../../services/ProvidersApiService';
 import { drawSpeedChart, drawChartOverlay, type ChartSeries, type ChartLayout } from '../../utils/speedChart';
@@ -134,6 +137,10 @@ const UploadRows = componentList<AmuleUpDownClient>(
 
 export const DashboardView = component(() => {
 	const ws = inject(WsService);
+	const prefs = inject(LocalPrefsService);
+	const columnsMenu = inject(ColumnsMenuService);
+	const activeColumns = new TableColumns({ prefs, prefsKey: 'dashboard.active' });
+	const uploadsColumns = new TableColumns({ prefs, prefsKey: 'dashboard.uploads' });
 
 	// ── Data signals ──────────────────────────────────────────────────────
 	const activeTransfers = signal<MediaTransfer[]>([]);
@@ -332,6 +339,10 @@ export const DashboardView = component(() => {
 		},
 
 		// Active transfers table
+		activeTable: { _ref: (el) => activeColumns.attach(el) },
+		activeColumnsBtn: { onclick: (e: MouseEvent) => columnsMenu.show(e.currentTarget as HTMLElement, activeColumns) },
+		uploadsTable: { _ref: (el) => uploadsColumns.attach(el) },
+		uploadsColumnsBtn: { onclick: (e: MouseEvent) => columnsMenu.show(e.currentTarget as HTMLElement, uploadsColumns) },
 		activeList: { inner: () => ActiveRows(activeTransfers) },
 		uploadList: {
 			inner: () => {

@@ -1,0 +1,21 @@
+.star-banner {
+	flex-shrink: 0;
+	padding: 8px 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+}
+
+.star-banner-icon {
+	font-size: 1.3em;
+}
+
+.star-banner-text {
+	font-size: 1em;
+	opacity: 0.75;
+
+	a {
+		color: var(--ui-text-accent);
+	}
+}

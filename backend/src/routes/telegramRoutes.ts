@@ -10,9 +10,13 @@ export const telegramRoutes = () => {
 	router.post('/auth/code', controller.submitCode);
 	router.post('/auth/password', controller.submitPassword);
 	router.post('/logout', controller.logout);
+	router.put('/search-enabled', controller.setSearchEnabled);
 
 	router.get('/chats', controller.getChats);
 	router.put('/chats/:chatId/indexing', controller.updateChatIndexing);
+	router.post('/chats/:chatId/index', controller.indexChatNow);
+	router.delete('/chats/:chatId/index', controller.clearChatIndex);
+	router.delete('/chats/:chatId', controller.deleteChat);
 
 	return router;
 };

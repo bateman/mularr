@@ -4,9 +4,11 @@ import { DialogService } from '../../services/DialogService';
 import { ExtensionsApiService } from '../../services/ExtensionsApiService';
 import { ContextMenuService, ContextMenuItem } from '../../services/ContextMenuService';
 import { ClipboardService } from '../../services/ClipboardService';
+import { ColumnsMenuService } from '../../services/ColumnsMenuService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { WsService } from '../../services/WsService';
 import { ListManager } from '../../utils/ListManager';
+import { TableColumns } from '../../utils/TableColumns';
 import { getFileIcon } from '../../utils/icons';
 import { fbytes } from '../../utils/formats';
 import { isVideoFile, joinPath } from '../../utils/files';
@@ -150,6 +152,8 @@ export const SharedView = component(() => {
 	const dialogService = inject(DialogService);
 	const prefs = inject(LocalPrefsService);
 	const ws = inject(WsService);
+	const columnsMenu = inject(ColumnsMenuService);
+	const columns = new TableColumns({ prefs, prefsKey: 'shared' });
 	const nameFilter = signal('');
 	const visibleCount = signal(SHARED_PAGE_SIZE);
 
@@ -226,6 +230,8 @@ export const SharedView = component(() => {
 		thRequests: { onclick: () => mgr.sort('getRequests') },
 		thTransferred: { onclick: () => mgr.sort('getXferred') },
 		thCompleteSources: { onclick: () => mgr.sort('getCompleteSources') },
+		sharedTable: { _ref: (el) => columns.attach(el) },
+		columnsBtn: { onclick: (e) => columnsMenu.show(e.currentTarget as HTMLElement, columns) },
 
 		refreshBtn: { onclick: loadShared },
 		nameFilterInput: {

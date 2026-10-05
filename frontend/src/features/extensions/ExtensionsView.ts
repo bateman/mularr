@@ -1,11 +1,8 @@
 import { inject, component, signal } from 'chispa';
-import { ExtensionsApiService, Extension, EXTENSION_TYPES } from '../../services/ExtensionsApiService';
+import { ExtensionsApiService, Extension, EXTENSION_TYPES, ExtensionType } from '../../services/ExtensionsApiService';
 import { DialogService } from '../../services/DialogService';
-import { ApiError } from '../../services/BaseApiService';
-import { TelegramConfig } from './components/TelegramConfig';
-import { WebhookConfig } from './components/WebhookConfig';
-import { ExtensionUrlConfig } from './components/ExtensionUrlConfig';
-import { AddExtensionForm } from './components/AddExtensionForm';
+import { ExtensionTypePicker } from './components/ExtensionTypePicker';
+import { ExtensionForm } from './components/ExtensionForm';
 import tpl from './ExtensionsView.html';
 import './ExtensionsView.css';
 
@@ -46,92 +43,55 @@ export const ExtensionsView = component(() => {
 		}
 	};
 
+	/**
+	 * Adding is two steps: pick the type, then fill the complete form of that type. The extension is
+	 * created, with its settings, only when that form is saved.
+	 */
 	const openAddDialog = () => {
 		dialogService.open({
 			title: 'Add Extension',
+			width: '380px',
 			render: (close) =>
-				AddExtensionForm({
-					onSave: async (v) => {
-						if (EXTENSION_TYPES[v.type]?.requiresUrl && !v.url) {
-							await dialogService.alert('URL is required for this extension type');
-							return;
-						}
-						try {
-							const res = await api.addExtension(v);
-							await refresh();
-							close();
-							// A webhook does nothing until events are selected — open its config right away
-							if (v.type === 'webhook' && res?.id != null) {
-								const created = extensions.get().find((x) => x.id === res.id);
-								if (created) openWebhookDialog(created);
-							}
-						} catch (e) {
-							console.error(e);
-							await dialogService.alert('Failed to add extension', 'Error');
-						}
+				ExtensionTypePicker({
+					onSelect: (type) => {
+						close();
+						openCreateDialog(type);
 					},
 					onCancel: close,
 				}),
 		});
 	};
 
-	const openTelegramDialog = () => {
+	const openCreateDialog = (type: ExtensionType) => {
 		dialogService.open({
-			title: 'Telegram Configuration',
-			width: '700px',
-			render: () => TelegramConfig(),
-		});
-	};
-
-	/** Persists a new URL for the extension; no-op when unchanged. Returns false (after alerting) if the URL is empty. */
-	const saveUrl = async (ext: Extension, url: string): Promise<boolean> => {
-		if (!url) {
-			await dialogService.alert('URL is required for this extension type');
-			return false;
-		}
-		if (url !== ext.url) await api.updateExtensionUrl(ext.id, url);
-		return true;
-	};
-
-	const openWebhookDialog = (ext: Extension) => {
-		dialogService.open({
-			title: `Webhook: ${ext.name}`,
-			width: '450px',
+			title: `Add ${EXTENSION_TYPES[type]?.label ?? type}`,
+			width: '520px',
 			render: (close) =>
-				WebhookConfig({
-					extension: ext,
-					onSave: async ({ url, events }) => {
-						try {
-							if (!(await saveUrl(ext, url))) return;
-							await api.updateExtensionConfig(ext.id, { events });
-							refresh();
-							close();
-						} catch (e) {
-							console.error(e);
-							await dialogService.alert(e instanceof ApiError ? e.message : 'Failed to save webhook configuration', 'Error');
-						}
+				ExtensionForm({
+					type,
+					onSave: async ({ name, enabled, url, config }) => {
+						await api.addExtension({ name, url, type, enabled: enabled ? 1 : 0, config });
+						await refresh();
+						close();
 					},
 					onCancel: close,
 				}),
 		});
 	};
 
-	const openUrlDialog = (ext: Extension) => {
+	const openEditDialog = (ext: Extension) => {
 		dialogService.open({
 			title: `${EXTENSION_TYPES[ext.type]?.label ?? ext.type}: ${ext.name}`,
-			width: '450px',
+			width: '520px',
 			render: (close) =>
-				ExtensionUrlConfig({
+				ExtensionForm({
+					type: ext.type,
 					extension: ext,
-					onSave: async (url) => {
-						try {
-							if (!(await saveUrl(ext, url))) return;
-							refresh();
-							close();
-						} catch (e) {
-							console.error(e);
-							await dialogService.alert(e instanceof ApiError ? e.message : 'Failed to save extension URL', 'Error');
-						}
+					onSave: async ({ url, config }) => {
+						if (url !== ext.url) await api.updateExtensionUrl(ext.id, url);
+						if (Object.keys(config).length > 0) await api.updateExtensionConfig(ext.id, config);
+						await refresh();
+						close();
 					},
 					onCancel: close,
 				}),
@@ -139,13 +99,11 @@ export const ExtensionsView = component(() => {
 	};
 
 	const openConfigDialog = (ext: Extension) => {
-		if (ext.type === 'telegram_indexer') openTelegramDialog();
-		else if (ext.type === 'webhook') openWebhookDialog(ext);
-		else if (EXTENSION_TYPES[ext.type]?.requiresUrl) openUrlDialog(ext);
+		if (hasConfigDialog(ext)) openEditDialog(ext);
 	};
 
 	// Every extension that points to a URL must stay editable after creation
-	const hasConfigDialog = (ext: Extension) => ext.type === 'telegram_indexer' || !!EXTENSION_TYPES[ext.type]?.requiresUrl;
+	const hasConfigDialog = (ext: Extension) => !!EXTENSION_TYPES[ext.type]?.requiresUrl;
 
 	refresh();
 

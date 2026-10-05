@@ -64,12 +64,56 @@ export class TelegramController {
 		}
 	};
 
+	setSearchEnabled = (req: Request, res: Response) => {
+		try {
+			const { enabled } = req.body;
+			if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'Missing enabled flag' });
+			this.service.setSearchEnabled(enabled);
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(500).json({ error: e.message });
+		}
+	};
+
 	getChats = (req: Request, res: Response) => {
 		try {
 			const chats = this.service.getDiscoveredChats();
 			res.json(chats);
 		} catch (e: any) {
 			res.status(500).json({ error: e.message });
+		}
+	};
+
+	indexChatNow = (req: Request, res: Response) => {
+		try {
+			const { chatId } = req.params;
+			const id = Array.isArray(chatId) ? chatId[0] : chatId;
+			this.service.requestIndexing(id);
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
+		}
+	};
+
+	clearChatIndex = (req: Request, res: Response) => {
+		try {
+			const { chatId } = req.params;
+			const id = Array.isArray(chatId) ? chatId[0] : chatId;
+			this.service.clearChatIndex(id);
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
+		}
+	};
+
+	deleteChat = (req: Request, res: Response) => {
+		try {
+			const { chatId } = req.params;
+			const id = Array.isArray(chatId) ? chatId[0] : chatId;
+			this.service.deleteChat(id);
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
 		}
 	};
 

@@ -379,6 +379,16 @@
 		.sidebar-version {
 			opacity: 0.9;
 			font-size: 0.7rem;
+			cursor: pointer;
+
+			&:hover {
+				text-decoration: underline;
+			}
+
+			&.sidebar-version-unstable {
+				color: var(--warning-color);
+				font-weight: bold;
+			}
 		}
 
 		.gh-link {

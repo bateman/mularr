@@ -59,11 +59,21 @@ export interface MediaTransfer {
 	categoryName?: string | null;
 	/** ISO timestamp of when the download was added, when tracked. */
 	addedOn?: string | null;
+	/** ISO timestamp of when the download was seen complete, when tracked (null for old records). */
+	completedOn?: string | null;
+	/** Bytes uploaded to other peers over the file's lifetime (aMule's all-time stats), when the provider shares it. */
+	uploadedTotal?: number;
+	/** Seed ratio (uploadedTotal/size) after which Sonarr/Radarr may remove the download; set by them per download. Null: no ratio limit. */
+	seedRatioLimit?: number | null;
+	/** Minutes of sharing after completion after which they may remove it. Null: no time limit. */
+	seedTimeLimit?: number | null;
 	provider?: string;
 	/** Resolved absolute path to the file on disk. Populated by MediaProviderService. */
 	filePath?: string;
-	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
+	/** Human-readable source label (e.g. Telegram chat name, Hispashare title). Provider-agnostic. */
 	sourceName?: string;
+	/** Page of the release on the website of the provider it was found on, when it has one. */
+	webUrl?: string;
 	/** Chunk information for the transfer. */
 	chunkInfo?: ChunkInfo;
 	/** Peers currently related to this transfer (download sources). */
@@ -93,6 +103,13 @@ export interface MediaTransfersResponse {
 	categories: MediaCategory[];
 }
 
+/**
+ * Ids of the providers that take part in searches (MediaSearchResult.provider / IMediaProvider.providerId).
+ * The frontend keeps a copy in ProvidersApiService.ts; a value array cannot cross the type-only bridge.
+ */
+export const SEARCH_PROVIDER_IDS = ['amule', 'telegram', 'hispashare'] as const;
+export type SearchProviderId = (typeof SEARCH_PROVIDER_IDS)[number];
+
 export interface MediaSearchResult {
 	name: string;
 	size: number;
@@ -105,6 +122,15 @@ export interface MediaSearchResult {
 	provider: string;
 	/** Human-readable source label (e.g. Telegram chat name). Provider-agnostic. */
 	sourceName?: string;
+	/** Page of the release on the provider's website, when it has one (e.g. the Hispashare title page). */
+	webUrl?: string;
+	/** IMDb id of the title the release belongs to, when the provider knows it. */
+	imdbId?: string;
+	/**
+	 * Everything the provider knew about the release beyond the fields above, in the provider's own shape
+	 * (e.g. the Hispashare title and release). Opaque to the UI; kept with the download's search_result snapshot.
+	 */
+	providerData?: unknown;
 }
 
 export interface MediaSearchResponse {

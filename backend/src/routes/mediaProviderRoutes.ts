@@ -7,6 +7,7 @@ export const mediaProviderRoutes = () => {
 
 	router.get('/transfers', controller.getTransfers);
 	router.post('/transfers/clear-completed', controller.clearCompletedTransfers);
+	router.get('/search-providers', controller.getSearchProviders);
 	router.post('/search', controller.startSearch);
 	router.get('/search/results', controller.getSearchResults);
 	router.get('/search/status', controller.getSearchStatus);

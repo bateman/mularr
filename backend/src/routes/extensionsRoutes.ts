@@ -7,6 +7,7 @@ export const extensionsRoutes = () => {
 
 	router.get('/', controller.list);
 	router.post('/', controller.add);
+	router.post('/test-connection', controller.testConnection);
 	router.delete('/:id', controller.delete);
 	router.patch('/:id', controller.update);
 	router.patch('/:id/toggle', controller.toggle);

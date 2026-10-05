@@ -2,7 +2,7 @@ import { container } from '../../container/ServiceContainer';
 import { type TelegramIndexerSearchResult, TelegramIndexerService } from '../../TelegramIndexerService';
 import { MainDB, DownloadDbRecord } from '../../db/MainDB';
 import { AppEvents, toDownloadEventPayload } from '../../AppEvents';
-import type { IMediaProvider, MediaSearchResult, MediaTransfer } from '../types';
+import type { IMediaProvider, MediaSearchResult, MediaTransfer, SearchCriteria } from '../types';
 import { DownloadStatus, TelegramDownloadDirectoryHelper } from '../../TelegramDownloadManager';
 import * as nodePath from 'path';
 import { LoggerFactory } from '../../logging/Logger';
@@ -126,15 +126,21 @@ export class TelegramMediaProvider implements IMediaProvider {
 	private readonly events = container.get(AppEvents);
 	private readonly dirHelper = new TelegramDownloadDirectoryHelper();
 
+	/** Switched on from the Telegram view; the indexer returns nothing while it is off. */
+	isAvailable(): boolean {
+		return this.indexer.isSearchEnabled();
+	}
+
 	canHandleDownload(link: string): boolean {
 		return link.startsWith('telegram:');
 	}
 
-	async startSearch(query: string): Promise<void> {
+	/** Full-text search over the indexed messages; the identifiers in the criteria are ignored. */
+	async startSearch(criteria: SearchCriteria): Promise<void> {
 		this.cachedResults = [];
 		this.searchDone = false;
 		// Run pagination loop in the background – does not block the caller
-		this.runSearchLoop(query)
+		this.runSearchLoop(criteria.query)
 			.catch((e) => {
 				this.logger.warn('search loop error:', e);
 			})
@@ -168,6 +174,7 @@ export class TelegramMediaProvider implements IMediaProvider {
 				type: r.type || '',
 				provider: 'telegram',
 				sourceName: r.chatTitle ? (r.topicName ? `${r.chatTitle} › ${r.topicName}` : r.chatTitle) : undefined,
+				providerData: r,
 			};
 		});
 	}

@@ -1,56 +1,12 @@
-import { inject, component, signal, refBindInput, computed, componentList } from 'chispa';
-import { TelegramApiService, type TelegramUser, type TelegramChat } from '../../../services/TelegramApiService';
-import { DialogService } from '../../../services/DialogService';
-import tpl from './TelegramConfig.html';
-import './TelegramConfig.css';
+import { inject, component, signal, refBindInput, computed } from 'chispa';
+import { TelegramApiService, type TelegramUser } from '../../services/TelegramApiService';
+import { DialogService } from '../../services/DialogService';
+import { TelegramChatsTable } from './components/TelegramChatsTable';
+import tpl from './TelegramView.html';
+import './TelegramView.css';
 
-interface ChatRowProps {
-	onToggleChat: (chat: TelegramChat) => void;
-}
-const ChatsRows = componentList<TelegramChat, ChatRowProps>(
-	(c, i, l, props) => {
-		return tpl.chatRow({
-			nodes: {
-				chatName: {
-					nodes: {
-						chatNameText: { inner: () => c.get().title },
-						mobileInfo: {
-							nodes: {
-								mobType: { inner: () => c.get().type },
-								mobStatusBadge: {
-									inner: () => (c.get().indexing_enabled ? 'Indexing' : 'Ignored'),
-									style: {
-										color: () => (c.get().indexing_enabled ? '#46d369' : '#ff4d4d'),
-										fontWeight: 'bold',
-									},
-								},
-								mobActionBtn: {
-									inner: () => (c.get().indexing_enabled ? 'Disable' : 'Enable'),
-									onclick: () => props!.onToggleChat(c.get()),
-								},
-							},
-						},
-					},
-				},
-				chatType: { inner: () => c.get().type },
-				chatStatusBadge: {
-					inner: () => (c.get().indexing_enabled ? 'Indexing' : 'Ignored'),
-					style: {
-						color: () => (c.get().indexing_enabled ? '#008000' : '#808080'),
-						fontWeight: 'bold',
-					},
-				},
-				chatActionBtn: {
-					inner: () => (c.get().indexing_enabled ? 'Disable' : 'Enable'),
-					onclick: () => props!.onToggleChat(c.get()),
-				},
-			},
-		});
-	},
-	(c) => c.id
-);
-
-export const TelegramConfig = component(() => {
+/** Telegram account: sign-in flow, the chats that get indexed, and whether Telegram takes part in searches. */
+export const TelegramView = component(() => {
 	// Services
 	const api = inject(TelegramApiService);
 	const dialogs = inject(DialogService);
@@ -58,9 +14,9 @@ export const TelegramConfig = component(() => {
 	// Signals
 	const authStatus = signal('disconnected');
 	const user = signal<TelegramUser | null>(null);
-	const chats = signal<TelegramChat[]>([]);
 	const loading = signal(false);
 	const errorMessage = signal('');
+	const searchEnabled = signal(true);
 
 	// Input Signals
 	const apiId = signal('');
@@ -70,20 +26,6 @@ export const TelegramConfig = component(() => {
 	const password = signal('');
 
 	// Helpers
-	const loadChats = async () => {
-		try {
-			const list = await api.getChats();
-			if (Array.isArray(list)) {
-				chats.set(list);
-			} else {
-				chats.set([]);
-			}
-		} catch (e) {
-			console.error('Failed to load chats', e);
-			chats.set([]);
-		}
-	};
-
 	const refreshStatus = async () => {
 		try {
 			const res = await api.getStatus();
@@ -92,10 +34,7 @@ export const TelegramConfig = component(() => {
 			const newStatus = res.status || 'disconnected';
 			authStatus.set(newStatus);
 			user.set(res.user ?? null);
-
-			if (newStatus === 'connected') {
-				loadChats();
-			}
+			searchEnabled.set(res.searchEnabled);
 		} catch (e) {
 			errorMessage.set('Failed to connect to backend service.');
 		}
@@ -153,12 +92,12 @@ export const TelegramConfig = component(() => {
 		refreshStatus();
 	};
 
-	const toggleChat = async (chat: TelegramChat) => {
+	const toggleSearchEnabled = async () => {
 		try {
-			await api.updateChatIndexing(chat.id, !chat.indexing_enabled);
-			loadChats();
+			await api.setSearchEnabled(!searchEnabled.get());
+			await refreshStatus();
 		} catch (e: any) {
-			errorMessage.set(e.message || 'Error updating chat');
+			errorMessage.set(e.message || 'Error updating the search provider');
 		}
 	};
 
@@ -176,16 +115,20 @@ export const TelegramConfig = component(() => {
 	// Initial load
 	refreshStatus();
 
-	const noChats = computed(() => {
-		const list = chats.get();
-		return !list || list.length === 0;
-	});
-
 	return tpl.fragment({
 		btnRefresh: { onclick: refreshStatus },
 		btnLogout: {
 			onclick: logout,
 			style: { display: () => (isConnected.get() ? '' : 'none') },
+		},
+
+		searchEnabledState: {
+			inner: () => (searchEnabled.get() ? 'Enabled' : 'Disabled'),
+			style: { color: () => (searchEnabled.get() ? '#008000' : '#800000') },
+		},
+		btnToggleSearchEnabled: {
+			onclick: toggleSearchEnabled,
+			inner: () => (searchEnabled.get() ? 'Disable' : 'Enable'),
 		},
 
 		errorBanner: {
@@ -224,8 +167,10 @@ export const TelegramConfig = component(() => {
 		panelWaitingPassword: {
 			style: { display: () => (isWaitingPassword.get() ? '' : 'none') },
 		},
+		// The table only exists while signed in: it loads on creation and its poller stops on unmount
 		panelConnected: {
 			style: { display: () => (isConnected.get() ? '' : 'none') },
+			inner: () => (isConnected.get() ? TelegramChatsTable({ onError: (message) => errorMessage.set(message) }) : null),
 		},
 
 		// Inputs use _ref for manual binding
@@ -263,12 +208,6 @@ export const TelegramConfig = component(() => {
 			onclick: submitPassword,
 			inner: () => (loading.get() ? 'Verifying...' : 'Submit Password'),
 			disabled: loading,
-		},
-
-		// Chats List
-		btnRefreshChats: { onclick: loadChats },
-		chatsList: {
-			inner: () => (noChats.get() ? tpl.noChats({}) : ChatsRows(chats, { onToggleChat: toggleChat })),
 		},
 	});
 });

@@ -51,7 +51,7 @@ COPY install-amule-gh-release.sh /tmp/install-amule.sh
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	tini \
 	procps \
-	&& bash /tmp/install-amule.sh 3.0.1 \
+	&& bash /tmp/install-amule.sh 3.1.0 \
 	&& rm /tmp/install-amule.sh \
 	&& rm -rf /var/lib/apt/lists/*
 
@@ -68,13 +68,15 @@ COPY --from=frontend-builder /app/frontend/dist ./backend/public
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
-# Create data directory for SQLite
+# Create the data directory (SQLite databases, aMule config, JWT secret); mount a volume here
 RUN mkdir -p /app/data && chown node:node /app/data
 
 # Set environment
 ENV PORT=8940
 ENV NODE_ENV=production
-ENV DATABASE_PATH=/app/data/database.sqlite
+ENV DATA_DIR=/app/data
+# Pinned rather than derived from DATA_DIR so deployments still using the deprecated DATABASE_PATH
+# (which moves the data directory) keep their aMule config where it already is
 ENV AMULE_CONFIG_DIR=/app/data/amule
 
 USER node

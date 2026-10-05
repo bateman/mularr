@@ -1,6 +1,6 @@
 import { BaseApiService } from './BaseApiService';
 
-export type ExtensionType = /*'validator' | 'enhanced_search' |*/ 'webhook' | 'telegram_indexer' | 'media_previewer';
+export type ExtensionType = /*'validator' | 'enhanced_search' |*/ 'webhook' | 'media_previewer' | 'sonarr' | 'radarr' | 'hispashare';
 
 export interface Extension {
 	id: number;
@@ -15,9 +15,65 @@ export const EXTENSION_TYPES: Record<ExtensionType, { label: string; requiresUrl
 	// validator: { label: 'Validator', requiresUrl: true },
 	// enhanced_search: { label: 'Enhanced Search', requiresUrl: false },
 	webhook: { label: 'Webhook', requiresUrl: true },
-	telegram_indexer: { label: 'Telegram Indexer', requiresUrl: false },
 	media_previewer: { label: 'Media Previewer', requiresUrl: true },
+	sonarr: { label: 'Sonarr', requiresUrl: true },
+	radarr: { label: 'Radarr', requiresUrl: true },
+	hispashare: { label: 'Hispashare', requiresUrl: true },
 };
+
+/** Must match HISPASHARE_DEFAULT_API_URL in backend/src/services/hispashare/HispashareApiClient.ts. */
+export const HISPASHARE_DEFAULT_API_URL = 'https://api.hispashare.org';
+
+/** Settings of the hispashare extension, stored as { token } in its config. */
+export interface HispashareExtensionConfig {
+	token: string;
+}
+
+export function parseHispashareConfig(config?: string): HispashareExtensionConfig {
+	try {
+		const parsed = JSON.parse(config || '{}');
+		return { token: typeof parsed.token === 'string' ? parsed.token : '' };
+	} catch {
+		return { token: '' };
+	}
+}
+
+/** Extension types that sync a *arr wanted list into the Torznab RSS feed. */
+export const ARR_EXTENSION_TYPES: readonly ExtensionType[] = ['sonarr', 'radarr'];
+
+export function isArrExtensionType(type: string): boolean {
+	return (ARR_EXTENSION_TYPES as readonly string[]).includes(type);
+}
+
+/** Must match ARR_SYNC_*_INTERVAL_MINUTES in backend/src/services/arrsync/ArrSyncService.ts. */
+export const ARR_SYNC_DEFAULT_INTERVAL_MINUTES = 60;
+export const ARR_SYNC_MIN_INTERVAL_MINUTES = 15;
+
+/**
+ * Settings of a sonarr/radarr extension, stored as { apiKey, intervalMinutes, searchProviders } in its config.
+ * Must match ArrExtensionConfig in backend/src/services/arrsync/ArrSyncService.ts.
+ */
+export interface ArrExtensionConfig {
+	apiKey: string;
+	intervalMinutes: number;
+	/** Search providers the wanted titles are looked up on; undefined (configs saved before it existed) means all. */
+	searchProviders?: string[];
+}
+
+export function parseArrConfig(config?: string): ArrExtensionConfig {
+	try {
+		const parsed = JSON.parse(config || '{}');
+		return {
+			apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
+			intervalMinutes: Number.isInteger(parsed.intervalMinutes) ? parsed.intervalMinutes : ARR_SYNC_DEFAULT_INTERVAL_MINUTES,
+			searchProviders: Array.isArray(parsed.searchProviders)
+				? parsed.searchProviders.filter((p: unknown): p is string => typeof p === 'string')
+				: undefined,
+		};
+	} catch {
+		return { apiKey: '', intervalMinutes: ARR_SYNC_DEFAULT_INTERVAL_MINUTES };
+	}
+}
 
 /** App events a webhook extension can subscribe to. Must match AppEvent in backend/src/services/AppEvents.ts. */
 export const WEBHOOK_EVENTS: { id: string; label: string; description: string }[] = [
@@ -48,7 +104,8 @@ export class ExtensionsApiService extends BaseApiService {
 		return this.request<Extension[]>('');
 	}
 
-	async addExtension(v: Partial<Extension>): Promise<{ success: boolean; id?: number }> {
+	/** Creates the extension together with its type-specific settings; the backend validates them as one. */
+	async addExtension(v: { name: string; url: string; type: ExtensionType; enabled: number; config?: object }): Promise<{ success: boolean; id?: number }> {
 		return this.request<{ success: boolean; id?: number }>('', {
 			method: 'POST',
 			body: JSON.stringify(v),
@@ -77,6 +134,14 @@ export class ExtensionsApiService extends BaseApiService {
 		return this.request<void>(`/${id}/config`, {
 			method: 'PATCH',
 			body: JSON.stringify({ config }),
+		});
+	}
+
+	/** Checks the given settings against the remote service without saving them. Rejects with the reason on failure. */
+	async testConnection(type: ExtensionType, url: string, config: object): Promise<{ success: boolean; message: string }> {
+		return this.request<{ success: boolean; message: string }>('/test-connection', {
+			method: 'POST',
+			body: JSON.stringify({ type, url, config }),
 		});
 	}
 }
