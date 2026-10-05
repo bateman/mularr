@@ -1,4 +1,4 @@
-import { inject, component, signal, refBindInput, refBindSelect, computed, effect } from 'chispa';
+import { inject, component, componentList, signal, refBindInput, refBindSelect, computed, effect } from 'chispa';
 import {
 	IndexerFeedApiService,
 	type ArrSyncExtensionStatus,
@@ -9,12 +9,14 @@ import {
 	type WantedListResponse,
 } from '../../services/IndexerFeedApiService';
 import { BlacklistService } from '../../services/BlacklistService';
+import { ContextMenuService, type ContextMenuItem } from '../../services/ContextMenuService';
 import { DialogService } from '../../services/DialogService';
 import { ApiError } from '../../services/BaseApiService';
 import { LocalPrefsService } from '../../services/LocalPrefsService';
 import { ColumnsMenuService } from '../../services/ColumnsMenuService';
 import { getProviderIcon, getProviderName } from '../../services/ProvidersApiService';
 import { sourceInfoContent, type SourceInfo } from '../../utils/sourceInfo';
+import { ListManager } from '../../utils/ListManager';
 import { TableColumns } from '../../utils/TableColumns';
 import { smartLoad, smartPoll } from '../../utils/scheduling';
 import { fbytes, relativeTime } from '../../utils/formats';
@@ -53,6 +55,82 @@ function badgeOf(s: ArrSyncExtensionStatus): { text: string; color: string } {
 	return { text: 'OK', color: '#008000' };
 }
 
+interface FeedRowProps {
+	/** Selection only: the feed comes sorted from the server, see getIndexerFeed. */
+	mgr: ListManager<IndexerFeedItem>;
+	onBlacklist: (items: IndexerFeedItem[]) => void;
+	onRemove: (items: IndexerFeedItem[]) => void;
+}
+
+/** One row per feed release; rows are selectable and the context menu acts on the whole selection. */
+const FeedRows = componentList<IndexerFeedItem, FeedRowProps>(
+	(it, i, l, props) => {
+		const { mgr, onBlacklist, onRemove } = props!;
+		const ctxMenu = inject(ContextMenuService);
+		const item = it.get.bind(it);
+		const isSelected = computed(() => mgr.selectedHashes.get().has(item().hash));
+		const type = () => MEDIA_TYPE_LABELS[item().media_type] ?? item().media_type;
+		const discovered = () => new Date(item().discovered_at).toLocaleString();
+		const origin = computed(() => parseSearchResult(item()));
+		// Row buttons act on their own release only, so their clicks must not reach the row selection handler
+		const blacklistBtn = {
+			onclick: (e: MouseEvent) => {
+				e.stopPropagation();
+				onBlacklist([item()]);
+			},
+		};
+		const deleteBtn = {
+			onclick: (e: MouseEvent) => {
+				e.stopPropagation();
+				onRemove([item()]);
+			},
+		};
+
+		return tpl.feedRow({
+			classes: { selected: isSelected },
+			onclick: (e: MouseEvent) => mgr.handleRowSelection(e, item().hash, l.get()),
+			oncontextmenu: (e: MouseEvent) => {
+				mgr.handleContextMenuSelection(e, item().hash, l.get());
+				const selected = mgr.selectedHashes.get();
+				const targets = l.get().filter((x) => selected.has(x.hash));
+				const multi = targets.length > 1;
+				const actions: ContextMenuItem[] = [
+					{ label: multi ? `Blacklist ${targets.length} Hashes…` : 'Blacklist Hash…', icon: '🚫', onClick: () => onBlacklist(targets) },
+					{ label: multi ? `Remove ${targets.length} from feed` : 'Remove from feed', icon: '🗑️', onClick: () => onRemove(targets) },
+				];
+				ctxMenu.show(e, actions);
+			},
+			nodes: {
+				nameCol: {},
+				nameText: { inner: () => item().name, title: () => item().hash },
+				mobileInfo: {
+					nodes: {
+						mobType: { inner: type },
+						mobSize: { inner: () => fbytes(item().size) },
+						mobSources: { inner: () => `${item().source_count} src` },
+						mobProviderIcon: { inner: () => getProviderIcon(item().provider), title: () => getProviderName(item().provider) },
+						mobDiscovered: { inner: discovered },
+						mobQuery: { inner: () => item().query ?? '', title: () => item().query ?? '' },
+						mobBlacklistBtn: blacklistBtn,
+						mobDeleteBtn: deleteBtn,
+					},
+				},
+				typeCol: { inner: type },
+				sizeCol: { inner: () => fbytes(item().size) },
+				sourcesCol: { inner: () => String(item().source_count) },
+				providerCol: { inner: () => getProviderIcon(item().provider), title: () => getProviderName(item().provider) },
+				originCol: { inner: () => sourceInfoContent(origin.get(), '-'), title: () => origin.get().sourceName ?? '' },
+				queryCol: { inner: () => item().query ?? '-', title: () => item().query ?? '' },
+				imdbCol: { inner: () => item().imdb_id ?? '-' },
+				discoveredCol: { inner: discovered, title: () => item().discovered_at },
+				blacklistBtn,
+				deleteBtn,
+			},
+		});
+	},
+	(item) => item.hash
+);
+
 /**
  * Two views of the *arr integration: the wanted titles read live from Sonarr/Radarr, with what the sync
  * did about each, and the feed the Torznab endpoint serves them on their RSS sync. Together they answer
@@ -66,6 +144,8 @@ export const IndexerFeedView = component(() => {
 	const columnsMenu = inject(ColumnsMenuService);
 	const wantedColumns = new TableColumns({ prefs, prefsKey: 'indexerfeed.wanted' });
 	const feedColumns = new TableColumns({ prefs, prefsKey: 'indexerfeed.feed' });
+	// Multi-selection of feed rows (click, Ctrl/Cmd+click, Shift+click); the server keeps the order, so no sorting here
+	const feedMgr = new ListManager<IndexerFeedItem>({ defaultColumn: 'discovered_at', skipSort: () => true });
 
 	const tab = signal<Tab>('wanted');
 
@@ -108,6 +188,7 @@ export const IndexerFeedView = component(() => {
 
 	const reloadFromStart = () => {
 		offset.set(0);
+		feedMgr.clearSelection();
 		return loadFeed();
 	};
 
@@ -166,22 +247,33 @@ export const IndexerFeedView = component(() => {
 		}
 	};
 
-	const removeItem = async (item: IndexerFeedItem) => {
+	/** Removes the releases from the feed; several at once ask first (the row button and a single-row menu do not). */
+	const removeItems = async (list: IndexerFeedItem[]) => {
+		if (list.length === 0) return;
+		if (list.length > 1 && !(await dialogService.confirm(`Remove ${list.length} releases from the feed?`, 'Remove From Feed'))) return;
 		try {
-			await api.removeItem(item.hash);
+			await Promise.all(list.map((item) => api.removeItem(item.hash)));
+			feedMgr.clearSelection();
 			await loadFeed();
 		} catch (e) {
 			await dialogService.alert(e instanceof ApiError ? e.message : 'Failed to remove the item', 'Error');
 		}
 	};
 
-	const blacklistItem = async (item: IndexerFeedItem) => {
+	const blacklistItems = async (list: IndexerFeedItem[]) => {
+		const single = list.length === 1;
 		const ok = await blacklistService.blacklistWithConfirm(
-			[{ hash: item.hash, name: item.name, size: item.size }],
-			'The release is removed from the feed and will not be offered to Sonarr/Radarr again.'
+			list.map((item) => ({ hash: item.hash, name: item.name, size: item.size })),
+			`The release${single ? ' is' : 's are'} removed from the feed and will not be offered to Sonarr/Radarr again.`
 		);
 		if (!ok) return;
-		await removeItem(item);
+		try {
+			await Promise.all(list.map((item) => api.removeItem(item.hash)));
+			feedMgr.clearSelection();
+			await loadFeed();
+		} catch (e) {
+			await dialogService.alert(e instanceof ApiError ? e.message : 'Failed to remove the item', 'Error');
+		}
 	};
 
 	const clearFeed = async () => {
@@ -331,44 +423,11 @@ export const IndexerFeedView = component(() => {
 		feedFooter: { style: showWhen(onFeedTab) },
 		feedBody: {
 			inner: () => {
-				const list = items.get();
-				if (list.length === 0) {
+				if (items.get().length === 0) {
 					const filtered = typeFilter.get() !== '' || search.get().trim() !== '' || jobFilter.get() !== null;
 					return tpl.noItemsRow({ nodes: { noItemsText: { inner: filtered ? 'No releases match the current filters.' : 'The feed is empty.' } } });
 				}
-				return list.map((item) => {
-					const type = MEDIA_TYPE_LABELS[item.media_type] ?? item.media_type;
-					const discovered = new Date(item.discovered_at).toLocaleString();
-					const origin = parseSearchResult(item);
-					return tpl.feedRow({
-						nodes: {
-							nameCol: {},
-							nameText: { inner: item.name, title: item.hash },
-							mobileInfo: {
-								nodes: {
-									mobType: { inner: type },
-									mobSize: { inner: fbytes(item.size) },
-									mobSources: { inner: `${item.source_count} src` },
-									mobProviderIcon: { inner: getProviderIcon(item.provider), title: getProviderName(item.provider) },
-									mobDiscovered: { inner: discovered },
-									mobQuery: { inner: item.query ?? '', title: item.query ?? '' },
-									mobBlacklistBtn: { onclick: () => blacklistItem(item) },
-									mobDeleteBtn: { onclick: () => removeItem(item) },
-								},
-							},
-							typeCol: { inner: type },
-							sizeCol: { inner: fbytes(item.size) },
-							sourcesCol: { inner: String(item.source_count) },
-							providerCol: { inner: getProviderIcon(item.provider), title: getProviderName(item.provider) },
-							originCol: { inner: sourceInfoContent(origin, '-'), title: origin.sourceName ?? '' },
-							queryCol: { inner: item.query ?? '-', title: item.query ?? '' },
-							imdbCol: { inner: item.imdb_id ?? '-' },
-							discoveredCol: { inner: discovered, title: item.discovered_at },
-							blacklistBtn: { onclick: () => blacklistItem(item) },
-							deleteBtn: { onclick: () => removeItem(item) },
-						},
-					});
-				});
+				return FeedRows(items, { mgr: feedMgr, onBlacklist: blacklistItems, onRemove: removeItems });
 			},
 		},
 
