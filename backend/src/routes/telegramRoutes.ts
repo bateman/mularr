@@ -11,12 +11,20 @@ export const telegramRoutes = () => {
 	router.post('/auth/password', controller.submitPassword);
 	router.post('/logout', controller.logout);
 	router.put('/search-enabled', controller.setSearchEnabled);
+	router.put('/feed-enabled', controller.setFeedEnabled);
 
 	router.get('/chats', controller.getChats);
 	router.put('/chats/:chatId/indexing', controller.updateChatIndexing);
 	router.post('/chats/:chatId/index', controller.indexChatNow);
 	router.delete('/chats/:chatId/index', controller.clearChatIndex);
 	router.delete('/chats/:chatId', controller.deleteChat);
+
+	// Channel links the account joins in the background; 'finished' goes before ':id' so it is not taken for one
+	router.get('/join-queue', controller.getJoinQueue);
+	router.post('/join-queue', controller.addJoinLinks);
+	router.delete('/join-queue/finished', controller.clearFinishedJoins);
+	router.post('/join-queue/:id/retry', controller.retryJoin);
+	router.delete('/join-queue/:id', controller.removeJoin);
 
 	return router;
 };

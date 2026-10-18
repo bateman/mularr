@@ -6,6 +6,7 @@ import net from 'net';
 import { __APP_CONFIG__ } from '../app-env';
 import { AmuleLogWatcher } from './AmuleLogWatcher';
 import { LoggerFactory } from './logging/Logger';
+import { sleep } from '../tools/asyncTools';
 
 const execPromise = util.promisify(exec);
 
@@ -55,16 +56,15 @@ export class AmuledService {
 	 * Stops the daemon, runs `whileStopped` (typically a config write: amuled rewrites amule.conf on
 	 * shutdown, so writing while it runs gets clobbered) and starts the daemon again, holding
 	 * `isRestarting` for the whole cycle so MularrMonitoringService and WsBroadcastService stay out
-	 * of the way. The daemon is started again even if `whileStopped` throws. `whileStopped` receives
-	 * whether a running daemon was actually stopped, so callers can skip port-release waits otherwise.
+	 * of the way. The daemon is started again even if `whileStopped` throws.
 	 */
-	private restartDaemonWith(whileStopped?: (stopped: boolean) => Promise<void> | void): Promise<void> {
+	private restartDaemonWith(whileStopped?: () => Promise<void> | void): Promise<void> {
 		this.pendingRestarts++; // counted from enqueue time so a queued cycle already reads as restarting
 		return this.runExclusive(async () => {
 			try {
-				const stopped = await this.stopDaemon();
+				await this.stopDaemon();
 				try {
-					await whileStopped?.(stopped);
+					await whileStopped?.();
 				} finally {
 					await this.startDaemonInternal();
 				}
@@ -120,9 +120,8 @@ export class AmuledService {
 	/**
 	 * Stops the aMule daemon gracefully, and if it doesn't stop within 8 seconds, force kills it.
 	 */
-	/** @returns Whether a running daemon was stopped (false when it was already stopped or stopping). */
-	private async stopDaemon(): Promise<boolean> {
-		if (this._isStopping || !(await this.isDaemonRunning())) return false; // Process is already stopped or stopping
+	private async stopDaemon(): Promise<void> {
+		if (this._isStopping || !(await this.isDaemonRunning())) return; // Process is already stopped or stopping
 		this._isStopping = true;
 		// Graceful shutdown first
 		await this.killDaemon('TERM');
@@ -133,10 +132,9 @@ export class AmuledService {
 			this.logger.warn('amuled did not stop gracefully, sending SIGKILL...');
 			await this.killDaemon('KILL');
 			// Give the kernel a moment to reap it
-			await new Promise((resolve) => setTimeout(resolve, 500));
+			await sleep(500);
 		}
 		this._isStopping = false;
-		return true;
 	}
 
 	async restartDaemon(): Promise<void> {
@@ -157,7 +155,7 @@ export class AmuledService {
 		const deadline = Date.now() + timeoutMs;
 		while (Date.now() < deadline) {
 			if (!(await this.isDaemonRunning())) return true; // Process is dead
-			await new Promise((resolve) => setTimeout(resolve, interval));
+			await sleep(interval);
 		}
 		return false;
 	}
@@ -205,7 +203,7 @@ export class AmuledService {
 			}
 			this.logger.warn('amuled process found but EC port unreachable — force killing zombie...');
 			await this.killDaemon('KILL');
-			await new Promise((resolve) => setTimeout(resolve, 1500));
+			await sleep(1500);
 		}
 		// Remove stale lock files that prevent amuled from starting after a hard kill
 		for (const lockFile of ['amuled.lock', 'amuled.pid', '.lock', 'muleLock']) {
@@ -426,15 +424,12 @@ export class AmuledService {
 		const sharedDirs =
 			!this.sharedDirsManager.isSharedDirsLockedByEnv() && Array.isArray(newConfig.sharedDirs) ? normalizeSharedDirectories(newConfig.sharedDirs) : null;
 
-		await this.restartDaemonWith(async (stopped) => {
+		await this.restartDaemonWith(async () => {
 			if (sharedDirs) {
 				this.sharedDirsManager.setSharedDirectories(sharedDirs);
 			}
 
-			// Only wait if we actually stopped a running daemon — gives the kernel a moment to release the port.
-			if (stopped) {
-				await new Promise((resolve) => setTimeout(resolve, 5000));
-			}
+			await sleep(5000); // Give the kernel a moment to release the port
 
 			let content = fs.readFileSync(confPath, 'utf-8');
 			for (const [key, value] of Object.entries(replacements)) {

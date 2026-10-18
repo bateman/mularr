@@ -2,7 +2,7 @@ import { container } from '../../container/ServiceContainer';
 import { type TelegramIndexerSearchResult, TelegramIndexerService } from '../../TelegramIndexerService';
 import { MainDB, DownloadDbRecord } from '../../db/MainDB';
 import { AppEvents, toDownloadEventPayload } from '../../AppEvents';
-import type { IMediaProvider, MediaSearchResult, MediaTransfer, SearchCriteria } from '../types';
+import type { IMediaProvider, MediaSearchResult, MediaTransfer, ProviderSearch, SearchCriteria } from '../types';
 import { DownloadStatus, TelegramDownloadDirectoryHelper } from '../../TelegramDownloadManager';
 import * as nodePath from 'path';
 import { LoggerFactory } from '../../logging/Logger';
@@ -41,6 +41,12 @@ function toAmuleDownloadStatus(downloadStatus?: DownloadStatus): number {
 		default:
 			return 0; // default to 'Unknown'
 	}
+}
+
+/** Origin label of a Telegram file: the chat, with the forum topic when the message sits in one. */
+export function telegramSourceName(chatTitle?: string | null, topicName?: string | null): string | undefined {
+	if (!chatTitle) return undefined;
+	return topicName ? `${chatTitle} › ${topicName}` : chatTitle;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,9 +109,7 @@ function buildTelegramTransfer(dbRecord: DownloadDbRecord, indexer: TelegramInde
 		sourceName: (() => {
 			if (parts.length < 2) return undefined;
 			const msg = parts.length >= 3 ? indexer.getFileInfo(parts[1], parseInt(parts[2])) : undefined;
-			const chatTitle = msg?.chat_title || indexer.getChatTitle(parts[1]);
-			const topicName = msg?.topic_name || undefined;
-			return chatTitle ? (topicName ? `${chatTitle} › ${topicName}` : chatTitle) : undefined;
+			return telegramSourceName(msg?.chat_title || indexer.getChatTitle(parts[1]), msg?.topic_name);
 		})(),
 	};
 }
@@ -117,8 +121,6 @@ function buildTelegramTransfer(dbRecord: DownloadDbRecord, indexer: TelegramInde
 export class TelegramMediaProvider implements IMediaProvider {
 	private readonly logger = LoggerFactory.create(this);
 	readonly providerId = 'telegram';
-	private cachedResults: TelegramIndexerSearchResult[] = [];
-	private searchDone = true;
 	// Matches Telegram's getMessages batch limit so verifying a page costs one call per chat
 	private readonly PAGE_SIZE = 100;
 	private readonly indexer = container.get(TelegramIndexerService);
@@ -135,52 +137,54 @@ export class TelegramMediaProvider implements IMediaProvider {
 		return link.startsWith('telegram:');
 	}
 
-	/** Full-text search over the indexed messages; the identifiers in the criteria are ignored. */
-	async startSearch(criteria: SearchCriteria): Promise<void> {
-		this.cachedResults = [];
-		this.searchDone = false;
+	/**
+	 * Full-text search over the indexed messages; the identifiers in the criteria are ignored. Each search pages
+	 * the index into its own buffer, so several may run at once.
+	 */
+	async startSearch(criteria: SearchCriteria): Promise<ProviderSearch> {
+		const hits: TelegramIndexerSearchResult[] = [];
+		let done = false;
 		// Run pagination loop in the background – does not block the caller
-		this.runSearchLoop(criteria.query)
+		this.runSearchLoop(criteria.query, hits)
 			.catch((e) => {
 				this.logger.warn('search loop error:', e);
 			})
 			.finally(() => {
-				this.searchDone = true;
+				done = true;
 			});
+		return {
+			queued: false,
+			getResults: async () => hits.map((r) => this.toSearchResult(r)),
+			getProgress: async () => (done ? 1 : 0.5),
+		};
 	}
 
-	private async runSearchLoop(query: string): Promise<void> {
+	private async runSearchLoop(query: string, into: TelegramIndexerSearchResult[]): Promise<void> {
 		let cursorId: number | null = 0;
 		while (cursorId !== null) {
 			const { results: batch, nextCursor } = await this.indexer.search(query, this.PAGE_SIZE, cursorId);
 			this.logger.debug(`Search batch: ${batch.length} results (cursor ${cursorId})`);
 			// A page may come back empty when all its hits were purged as vanished media while
 			// more pages remain, so only a null cursor ends the loop
-			this.cachedResults.push(...batch);
+			into.push(...batch);
 			cursorId = nextCursor;
 		}
-		this.logger.info('Search completed. Total results:', this.cachedResults.length);
+		this.logger.info('Search completed. Total results:', into.length);
 	}
 
-	async getSearchResults(): Promise<MediaSearchResult[]> {
-		return this.cachedResults.map((r) => {
-			return {
-				name: r.name,
-				size: r.size,
-				hash: r.hash,
-				sourceCount: 1,
-				completeSourceCount: 1,
-				downloadStatus: toAmuleDownloadStatus(this.indexer.getDownloadStatus(r.hash)),
-				type: r.type || '',
-				provider: 'telegram',
-				sourceName: r.chatTitle ? (r.topicName ? `${r.chatTitle} › ${r.topicName}` : r.chatTitle) : undefined,
-				providerData: r,
-			};
-		});
-	}
-
-	async getSearchStatus(): Promise<number> {
-		return this.searchDone ? 1.0 : 0.5;
+	private toSearchResult(r: TelegramIndexerSearchResult): MediaSearchResult {
+		return {
+			name: r.name,
+			size: r.size,
+			hash: r.hash,
+			sourceCount: 1,
+			completeSourceCount: 1,
+			downloadStatus: toAmuleDownloadStatus(this.indexer.getDownloadStatus(r.hash)),
+			type: r.type || '',
+			provider: 'telegram',
+			sourceName: telegramSourceName(r.chatTitle, r.topicName),
+			providerData: r,
+		};
 	}
 
 	async addDownload(link: string): Promise<void> {

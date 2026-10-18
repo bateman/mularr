@@ -2,7 +2,8 @@ import { MainDB, Extension, ValidationResult } from '../services/db/MainDB';
 import { container } from './container/ServiceContainer';
 import { AppEvent, AppEvents, isAppEvent } from './AppEvents';
 import { createArrApiClient, isArrExtensionType, validateArrConfig } from './arrsync/ArrSyncService';
-import { HispashareApiClient, validateHispashareConfig } from './hispashare/HispashareApiClient';
+import { HispashareApiClient } from './hispashare/HispashareApiClient';
+import { validateHispashareConfig } from './hispashare/HispashareService';
 import { LoggerFactory } from './logging/Logger';
 
 function isHttpUrl(value: string): boolean {
@@ -56,10 +57,13 @@ export class ExtensionsService {
 	updateExtensionUrl(id: number, url: unknown) {
 		const extension = this.db.getExtensionById(id);
 		if (!extension) throw new Error(`Extension ${id} not found`);
-		if (typeof url !== 'string' || !isHttpUrl(url.trim())) {
+		const trimmed = typeof url === 'string' ? url.trim() : null;
+		// A Sonarr/Radarr extension needs no URL while its wanted sync is off (see ArrExtensionConfig.syncWanted)
+		const emptyAllowed = trimmed === '' && isArrExtensionType(extension.type);
+		if (trimmed === null || (!emptyAllowed && !isHttpUrl(trimmed))) {
 			throw new Error('url must be a valid http(s) URL');
 		}
-		this.db.updateExtensionUrl(id, url.trim());
+		this.db.updateExtensionUrl(id, trimmed);
 	}
 
 	updateExtensionConfig(id: number, config: Record<string, unknown>) {
@@ -102,6 +106,7 @@ export class ExtensionsService {
 			throw new Error('Connection test is not supported for this extension type');
 		}
 		const { apiKey } = validateArrConfig(config);
+		if (!apiKey) throw new Error('apiKey is required to test the connection');
 		const status = await createArrApiClient(type, url.trim(), apiKey).getSystemStatus();
 		const appName = (status.appName ?? '').toLowerCase();
 		if (appName && appName !== type) {

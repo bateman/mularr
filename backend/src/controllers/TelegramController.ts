@@ -75,6 +75,17 @@ export class TelegramController {
 		}
 	};
 
+	setFeedEnabled = (req: Request, res: Response) => {
+		try {
+			const { enabled } = req.body;
+			if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'Missing enabled flag' });
+			this.service.setFeedEnabled(enabled);
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(500).json({ error: e.message });
+		}
+	};
+
 	getChats = (req: Request, res: Response) => {
 		try {
 			const chats = this.service.getDiscoveredChats();
@@ -116,6 +127,58 @@ export class TelegramController {
 			res.status(400).json({ error: e.message });
 		}
 	};
+
+	getJoinQueue = (req: Request, res: Response) => {
+		try {
+			res.json(this.service.getJoinQueue());
+		} catch (e: any) {
+			res.status(500).json({ error: e.message });
+		}
+	};
+
+	addJoinLinks = (req: Request, res: Response) => {
+		try {
+			const { links, indexOnJoin } = req.body;
+			if (!Array.isArray(links) || !links.every((l) => typeof l === 'string')) return res.status(400).json({ error: 'Missing links' });
+			const { added, alreadyJoined, invalid } = this.service.addJoinLinks(links, indexOnJoin === true);
+			res.json({ added: added.length, alreadyJoined, invalid });
+		} catch (e: any) {
+			res.status(500).json({ error: e.message });
+		}
+	};
+
+	retryJoin = (req: Request, res: Response) => {
+		try {
+			this.service.retryJoin(this.joinId(req));
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
+		}
+	};
+
+	removeJoin = (req: Request, res: Response) => {
+		try {
+			this.service.removeJoin(this.joinId(req));
+			res.json({ success: true });
+		} catch (e: any) {
+			res.status(400).json({ error: e.message });
+		}
+	};
+
+	clearFinishedJoins = (req: Request, res: Response) => {
+		try {
+			res.json({ removed: this.service.clearFinishedJoins() });
+		} catch (e: any) {
+			res.status(500).json({ error: e.message });
+		}
+	};
+
+	private joinId(req: Request): number {
+		const { id } = req.params;
+		const value = Number(Array.isArray(id) ? id[0] : id);
+		if (!Number.isInteger(value)) throw new Error('Invalid queue id');
+		return value;
+	}
 
 	updateChatIndexing = (req: Request, res: Response) => {
 		try {

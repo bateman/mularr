@@ -11,30 +11,45 @@ export interface Extension {
 	config?: string;
 }
 
-export const EXTENSION_TYPES: Record<ExtensionType, { label: string; requiresUrl: boolean }> = {
-	// validator: { label: 'Validator', requiresUrl: true },
-	// enhanced_search: { label: 'Enhanced Search', requiresUrl: false },
-	webhook: { label: 'Webhook', requiresUrl: true },
-	media_previewer: { label: 'Media Previewer', requiresUrl: true },
-	sonarr: { label: 'Sonarr', requiresUrl: true },
-	radarr: { label: 'Radarr', requiresUrl: true },
-	hispashare: { label: 'Hispashare', requiresUrl: true },
+export const EXTENSION_TYPES: Record<ExtensionType, { label: string }> = {
+	// validator: { label: 'Validator' },
+	// enhanced_search: { label: 'Enhanced Search' },
+	webhook: { label: 'Webhook' },
+	media_previewer: { label: 'Media Previewer' },
+	sonarr: { label: 'Sonarr' },
+	radarr: { label: 'Radarr' },
+	hispashare: { label: 'Hispashare' },
 };
 
 /** Must match HISPASHARE_DEFAULT_API_URL in backend/src/services/hispashare/HispashareApiClient.ts. */
 export const HISPASHARE_DEFAULT_API_URL = 'https://api.hispashare.org';
 
-/** Settings of the hispashare extension, stored as { token } in its config. */
+/** Must match HISPASHARE_FEED_*_INTERVAL_MINUTES in backend/src/services/hispashare/HispashareService.ts. */
+export const HISPASHARE_FEED_DEFAULT_INTERVAL_MINUTES = 30;
+export const HISPASHARE_FEED_MIN_INTERVAL_MINUTES = 10;
+
+/**
+ * Settings of the hispashare extension, stored as { token, feedEnabled, feedIntervalMinutes } in its config.
+ * Must match HispashareExtensionConfig in backend/src/services/hispashare/HispashareService.ts.
+ */
 export interface HispashareExtensionConfig {
 	token: string;
+	/** Publish the catalogue's newest releases in the indexer feed, polled every feedIntervalMinutes. */
+	feedEnabled: boolean;
+	feedIntervalMinutes: number;
 }
 
 export function parseHispashareConfig(config?: string): HispashareExtensionConfig {
+	const defaults: HispashareExtensionConfig = { token: '', feedEnabled: false, feedIntervalMinutes: HISPASHARE_FEED_DEFAULT_INTERVAL_MINUTES };
 	try {
 		const parsed = JSON.parse(config || '{}');
-		return { token: typeof parsed.token === 'string' ? parsed.token : '' };
+		return {
+			token: typeof parsed.token === 'string' ? parsed.token : defaults.token,
+			feedEnabled: parsed.feedEnabled === true,
+			feedIntervalMinutes: Number.isInteger(parsed.feedIntervalMinutes) ? parsed.feedIntervalMinutes : defaults.feedIntervalMinutes,
+		};
 	} catch {
-		return { token: '' };
+		return defaults;
 	}
 }
 
@@ -49,14 +64,30 @@ export function isArrExtensionType(type: string): boolean {
 export const ARR_SYNC_DEFAULT_INTERVAL_MINUTES = 60;
 export const ARR_SYNC_MIN_INTERVAL_MINUTES = 15;
 
+/** Torznab indexer path, where the request's app tells which extensions apply. Must match the mount in backend/src/index.ts. */
+export const TORZNAB_API_PATH = '/api/as-torznab-indexer';
+
 /**
- * Settings of a sonarr/radarr extension, stored as { apiKey, intervalMinutes, searchProviders } in its config.
+ * Torznab indexer path pinned to one sonarr/radarr extension's provider selection, for setups with several
+ * instances of the same app. Must match the route in backend/src/routes/indexerRoutes.ts.
+ */
+export function arrTorznabApiPath(extensionId: number): string {
+	return `${TORZNAB_API_PATH}/ext/${extensionId}`;
+}
+
+/**
+ * Settings of a sonarr/radarr extension, stored as { syncWanted, apiKey, intervalMinutes, searchProviders } in its config.
  * Must match ArrExtensionConfig in backend/src/services/arrsync/ArrSyncService.ts.
  */
 export interface ArrExtensionConfig {
+	/** Periodically sync the instance's wanted list, which needs the URL and API key; off, the extension only selects search providers. */
+	syncWanted: boolean;
 	apiKey: string;
 	intervalMinutes: number;
-	/** Search providers the wanted titles are looked up on; undefined (configs saved before it existed) means all. */
+	/**
+	 * Search providers of the instance: for its wanted sync and for the automatic searches its app runs through the
+	 * Torznab indexer. Empty means none, undefined (configs saved before it existed) means all.
+	 */
 	searchProviders?: string[];
 }
 
@@ -64,6 +95,8 @@ export function parseArrConfig(config?: string): ArrExtensionConfig {
 	try {
 		const parsed = JSON.parse(config || '{}');
 		return {
+			// Configs saved before the sync was optional have no flag: they sync
+			syncWanted: parsed.syncWanted === undefined ? true : parsed.syncWanted === true,
 			apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
 			intervalMinutes: Number.isInteger(parsed.intervalMinutes) ? parsed.intervalMinutes : ARR_SYNC_DEFAULT_INTERVAL_MINUTES,
 			searchProviders: Array.isArray(parsed.searchProviders)
@@ -71,7 +104,7 @@ export function parseArrConfig(config?: string): ArrExtensionConfig {
 				: undefined,
 		};
 	} catch {
-		return { apiKey: '', intervalMinutes: ARR_SYNC_DEFAULT_INTERVAL_MINUTES };
+		return { syncWanted: true, apiKey: '', intervalMinutes: ARR_SYNC_DEFAULT_INTERVAL_MINUTES };
 	}
 }
 

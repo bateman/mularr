@@ -1,8 +1,9 @@
 import { Api } from 'telegram';
 import { returnBigInt } from 'telegram/Helpers';
-import type { MessageRow, TelegramAccount } from '../services/db/TelegramIndexerDB';
+import type { JoinQueueRow, MessageRow, TelegramAccount } from '../services/db/TelegramIndexerDB';
 import type { DownloadStatus } from '../services/TelegramDownloadManager';
-import type { AuthStatus, TelegramChatsResponse, TelegramIndexerSearchResult } from '../services/TelegramIndexerService';
+import type { JoinQueueStatus } from '../services/TelegramJoinManager';
+import type { AuthStatus, NewFilesListener, TelegramChatsResponse, TelegramIndexerSearchResult } from '../services/TelegramIndexerService';
 import { LoggerFactory } from '../services/logging/Logger';
 import * as F from './fixtures';
 import { getMockWorld } from './MockWorld';
@@ -26,6 +27,7 @@ export class MockTelegramIndexerService {
 			status: this.authStatus,
 			user: this.authStatus === 'connected' ? this.currentUser() : null,
 			searchEnabled: this.isSearchEnabled(),
+			feedEnabled: this.isFeedEnabled(),
 		};
 	}
 
@@ -36,6 +38,17 @@ export class MockTelegramIndexerService {
 	setSearchEnabled(enabled: boolean): void {
 		this.account.searchEnabled = enabled;
 	}
+
+	isFeedEnabled(): boolean {
+		return this.account.feedEnabled;
+	}
+
+	setFeedEnabled(enabled: boolean): void {
+		this.account.feedEnabled = enabled;
+	}
+
+	/** The simulated indexing never reports new files, so the feed stays as seeded. */
+	onNewFilesIndexed(_listener: NewFilesListener): void {}
 
 	private currentUser(): Api.User {
 		const { id, firstName, lastName, username, phone } = F.TELEGRAM_USER;
@@ -107,6 +120,28 @@ export class MockTelegramIndexerService {
 
 	deleteChat(chatId: string): void {
 		this.world.deleteTelegramChat(chatId);
+	}
+
+	// ── Join queue ────────────────────────────────────────────────────────────
+
+	getJoinQueue(): JoinQueueStatus {
+		return this.world.getTelegramJoinQueue();
+	}
+
+	addJoinLinks(links: string[], indexOnJoin: boolean): { added: JoinQueueRow[]; alreadyJoined: string[]; invalid: string[] } {
+		return this.world.enqueueTelegramJoins(links, indexOnJoin);
+	}
+
+	retryJoin(id: number): void {
+		this.world.retryTelegramJoin(id);
+	}
+
+	removeJoin(id: number): void {
+		this.world.removeTelegramJoin(id);
+	}
+
+	clearFinishedJoins(): number {
+		return this.world.clearFinishedTelegramJoins();
 	}
 
 	// ── Downloads ─────────────────────────────────────────────────────────────

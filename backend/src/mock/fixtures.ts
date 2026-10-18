@@ -254,6 +254,10 @@ export const AMULE_CONFIG: Record<string, string | boolean> = {
 
 /** Documentation-reserved address and AS number, so the dashboard never shows anyone's real network. */
 export const PUBLIC_IP = '203.0.113.42';
+/** Size of the filesystem holding the mock incoming dir; the used part is derived from the seeded and simulated files (MockWorld.getDiskUsedBytes). */
+export const DISK_TOTAL_BYTES = 4 * 1024 ** 4;
+/** Space taken on that filesystem by things other than the mock files (the rest of the pretend library). */
+export const DISK_OTHER_USED_BYTES = 2.6 * 1024 ** 4;
 export const VPN_FORWARDED_PORT = 45123;
 export const IP_DETAILS = {
 	ip: PUBLIC_IP,
@@ -275,13 +279,14 @@ export const TELEGRAM_ACCOUNT: TelegramAccount = {
 	apiHash: '0123456789abcdef0123456789abcdef',
 	session: 'mock-session',
 	searchEnabled: true,
+	feedEnabled: false,
 };
 
 export const TELEGRAM_CHATS: Chat[] = [
-	{ id: '-1001234567890', title: 'Open Source ISOs', type: 'channel', indexing_enabled: 1 },
-	{ id: '-1001234567891', title: 'Public Domain & Open Cinema', type: 'channel', indexing_enabled: 1 },
-	{ id: '-1001234567892', title: 'Creative Commons Music', type: 'group', indexing_enabled: 1 },
-	{ id: '-1001234567893', title: 'Friends & Family', type: 'group', indexing_enabled: 0 },
+	{ id: '-1001234567890', title: 'Open Source ISOs', type: 'channel', indexing_enabled: 1, username: 'open_source_isos', invalid: 0 },
+	{ id: '-1001234567891', title: 'Public Domain & Open Cinema', type: 'channel', indexing_enabled: 1, username: 'open_cinema', invalid: 0 },
+	{ id: '-1001234567892', title: 'Creative Commons Music', type: 'group', indexing_enabled: 1, username: null, invalid: 0 },
+	{ id: '-1001234567893', title: 'Friends & Family', type: 'group', indexing_enabled: 0, username: null, invalid: 0 },
 ];
 
 /**

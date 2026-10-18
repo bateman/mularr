@@ -2,10 +2,14 @@ import { inject, component, signal, refBindInput, computed } from 'chispa';
 import { TelegramApiService, type TelegramUser } from '../../services/TelegramApiService';
 import { DialogService } from '../../services/DialogService';
 import { TelegramChatsTable } from './components/TelegramChatsTable';
+import { TelegramJoinQueue } from './components/TelegramJoinQueue';
 import tpl from './TelegramView.html';
 import './TelegramView.css';
 
-/** Telegram account: sign-in flow, the chats that get indexed, and whether Telegram takes part in searches. */
+/** The panes of the signed-in view, picked with the topbar tabs. */
+type Tab = 'chats' | 'join-queue';
+
+/** Telegram account: sign-in flow, the chats that get indexed, and whether Telegram takes part in searches and in the indexer feed. */
 export const TelegramView = component(() => {
 	// Services
 	const api = inject(TelegramApiService);
@@ -17,6 +21,8 @@ export const TelegramView = component(() => {
 	const loading = signal(false);
 	const errorMessage = signal('');
 	const searchEnabled = signal(true);
+	const feedEnabled = signal(false);
+	const tab = signal<Tab>('chats');
 
 	// Input Signals
 	const apiId = signal('');
@@ -35,6 +41,7 @@ export const TelegramView = component(() => {
 			authStatus.set(newStatus);
 			user.set(res.user ?? null);
 			searchEnabled.set(res.searchEnabled);
+			feedEnabled.set(res.feedEnabled);
 		} catch (e) {
 			errorMessage.set('Failed to connect to backend service.');
 		}
@@ -101,6 +108,15 @@ export const TelegramView = component(() => {
 		}
 	};
 
+	const toggleFeedEnabled = async () => {
+		try {
+			await api.setFeedEnabled(!feedEnabled.get());
+			await refreshStatus();
+		} catch (e: any) {
+			errorMessage.set(e.message || 'Error updating the indexer feed');
+		}
+	};
+
 	// Computed properties
 	const isConnected = computed(() => authStatus.get() === 'connected');
 	const isDisconnected = computed(() => authStatus.get() === 'disconnected');
@@ -116,6 +132,10 @@ export const TelegramView = component(() => {
 	refreshStatus();
 
 	return tpl.fragment({
+		// Tabs only make sense while signed in; each pane is created when chosen, so only the visible one polls
+		viewTabs: { style: { display: () => (isConnected.get() ? '' : 'none') } },
+		tabChats: { onclick: () => tab.set('chats'), classes: { active: () => tab.get() === 'chats' } },
+		tabJoinQueue: { onclick: () => tab.set('join-queue'), classes: { active: () => tab.get() === 'join-queue' } },
 		btnRefresh: { onclick: refreshStatus },
 		btnLogout: {
 			onclick: logout,
@@ -129,6 +149,15 @@ export const TelegramView = component(() => {
 		btnToggleSearchEnabled: {
 			onclick: toggleSearchEnabled,
 			inner: () => (searchEnabled.get() ? 'Disable' : 'Enable'),
+		},
+
+		feedEnabledState: {
+			inner: () => (feedEnabled.get() ? 'Enabled' : 'Disabled'),
+			style: { color: () => (feedEnabled.get() ? '#008000' : '#800000') },
+		},
+		btnToggleFeedEnabled: {
+			onclick: toggleFeedEnabled,
+			inner: () => (feedEnabled.get() ? 'Disable' : 'Enable'),
 		},
 
 		errorBanner: {
@@ -167,10 +196,14 @@ export const TelegramView = component(() => {
 		panelWaitingPassword: {
 			style: { display: () => (isWaitingPassword.get() ? '' : 'none') },
 		},
-		// The table only exists while signed in: it loads on creation and its poller stops on unmount
+		// The panes only exist while signed in and while their tab is active: they load on creation and their pollers stop on unmount
 		panelConnected: {
 			style: { display: () => (isConnected.get() ? '' : 'none') },
-			inner: () => (isConnected.get() ? TelegramChatsTable({ onError: (message) => errorMessage.set(message) }) : null),
+			inner: () => {
+				if (!isConnected.get()) return null;
+				const onError = (message: string) => errorMessage.set(message);
+				return tab.get() === 'chats' ? TelegramChatsTable({ onError }) : TelegramJoinQueue({ onError });
+			},
 		},
 
 		// Inputs use _ref for manual binding

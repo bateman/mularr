@@ -1,14 +1,8 @@
 import { container } from '../../container/ServiceContainer';
-import { MainDB } from '../../db/MainDB';
-import { parseEd2kLink } from '../../eD2kTools';
-import {
-	HispashareApiClient,
-	HispashareRateLimitError,
-	hispashareTitleUrl,
-	parseHispashareConfig,
-	type HispashareTitle,
-} from '../../hispashare/HispashareApiClient';
-import type { IMediaProvider, MediaSearchResult, MediaTransfer, SearchCriteria } from '../types';
+import { parseEd2kLink } from '../../../tools/eD2kTools';
+import { HispashareApiClient, HispashareRateLimitError, hispashareTitleUrl, type HispashareTitle } from '../../hispashare/HispashareApiClient';
+import { HispashareService } from '../../hispashare/HispashareService';
+import type { IMediaProvider, MediaSearchResult, MediaTransfer, ProviderSearch, SearchCriteria } from '../types';
 import { LoggerFactory } from '../../logging/Logger';
 
 export const HISPASHARE_PROVIDER_ID = 'hispashare';
@@ -22,70 +16,57 @@ export class HispashareMediaProvider implements IMediaProvider {
 	private readonly logger = LoggerFactory.create(this);
 	readonly providerId = HISPASHARE_PROVIDER_ID;
 	readonly searchesByImdbId = true;
-	private readonly db = container.get(MainDB);
-	/** Client for the current extension settings; rebuilt when the URL or token change, so its cache and quota counters survive searches. */
-	private client: { key: string; instance: HispashareApiClient } | null = null;
-	private results: MediaSearchResult[] = [];
-	private searchDone = true;
+	private readonly hispashare = container.get(HispashareService);
 
 	isAvailable(): boolean {
-		return this.getClient() !== null;
+		return this.hispashare.getClient() !== null;
 	}
 
 	canHandleDownload(_link: string): boolean {
 		return false;
 	}
 
-	/** Client for the enabled extension, or null when Hispashare is not configured. */
-	getClient(): HispashareApiClient | null {
-		const ext = this.db.getExtensionByType('hispashare');
-		if (!ext || !ext.enabled) return null;
-		const config = parseHispashareConfig(ext.config);
-		if (!config) return null;
-		const key = `${ext.url}|${config.token}`;
-		if (this.client?.key !== key) this.client = { key, instance: new HispashareApiClient(ext.url, config.token) };
-		return this.client.instance;
-	}
-
-	async startSearch(criteria: SearchCriteria): Promise<void> {
-		this.results = [];
-		const client = this.getClient();
-		if (!client) {
-			this.searchDone = true;
-			return;
+	/** One HTTP request per search, each into its own buffer: searches never interfere with each other. */
+	async startSearch(criteria: SearchCriteria): Promise<ProviderSearch> {
+		let results: MediaSearchResult[] = [];
+		let done = false;
+		const client = this.hispashare.getClient();
+		if (client) {
+			// Runs in the background like the other providers; getProgress reports completion
+			this.runSearch(client, criteria)
+				.then((found) => {
+					results = found;
+				})
+				.catch((error: any) => {
+					if (error instanceof HispashareRateLimitError) this.logger.info(`Search skipped: ${error.message}`);
+					else this.logger.warn('Search failed:', error?.message ?? error);
+				})
+				.finally(() => {
+					done = true;
+				});
+		} else {
+			done = true;
 		}
-		this.searchDone = false;
-		// Runs in the background like the other providers; getSearchStatus reports completion
-		this.runSearch(client, criteria)
-			.catch((error: any) => {
-				if (error instanceof HispashareRateLimitError) this.logger.info(`Search skipped: ${error.message}`);
-				else this.logger.warn('Search failed:', error?.message ?? error);
-			})
-			.finally(() => {
-				this.searchDone = true;
-			});
+		return {
+			queued: false,
+			getResults: async () => results,
+			getProgress: async () => (done ? 1 : 0.5),
+		};
 	}
 
-	private async runSearch(client: HispashareApiClient, criteria: SearchCriteria): Promise<void> {
+	private async runSearch(client: HispashareApiClient, criteria: SearchCriteria): Promise<MediaSearchResult[]> {
 		const interactive = !!criteria.interactive;
 		let titles: HispashareTitle[];
 		if (criteria.imdbId) {
 			titles = await client.titlesByImdb(criteria.imdbId, interactive);
 		} else {
 			const q = firstQueryVariant(criteria.query);
-			if (!q) return;
+			if (!q) return [];
 			titles = await client.searchTitles(q, interactive);
 		}
-		this.results = toSearchResults(titles);
-		this.logger.info(`Search completed: ${titles.length} title(s), ${this.results.length} file(s)`);
-	}
-
-	async getSearchResults(): Promise<MediaSearchResult[]> {
-		return this.results;
-	}
-
-	async getSearchStatus(): Promise<number> {
-		return this.searchDone ? 1 : 0.5;
+		const results = hispashareSearchResults(titles);
+		this.logger.info(`Search completed: ${titles.length} title(s), ${results.length} file(s)`);
+		return results;
 	}
 
 	// Downloads are eD2k transfers owned by aMule; MediaProviderService never routes them here (canHandleDownload is false)
@@ -123,8 +104,11 @@ export function hispashareSourceName(title: HispashareTitle, releaseInfo: string
 	return ['Hispashare: ' + name, releaseInfo.trim(), languages.join('/')].filter((part) => part).join(' · ');
 }
 
-/** One result per ed2k file of every release, deduplicated by hash (a file may appear under several titles). */
-function toSearchResults(titles: HispashareTitle[]): MediaSearchResult[] {
+/**
+ * One result per ed2k file of every release, deduplicated by hash (a file may appear under several titles).
+ * Also how the feed poller turns the catalogue's newest titles into releases (see services/indexerfeed).
+ */
+export function hispashareSearchResults(titles: HispashareTitle[]): MediaSearchResult[] {
 	const byHash = new Map<string, MediaSearchResult>();
 	for (const title of titles) {
 		const webUrl = hispashareTitleUrl(title.id);

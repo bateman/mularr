@@ -1,10 +1,22 @@
 import Database from 'better-sqlite3';
+import { LoggerFactory } from '../logging/Logger';
+import { sleep } from '../../tools/asyncTools';
 
 export interface Chat {
 	id: string;
 	title: string;
 	type: string;
 	indexing_enabled: number;
+	/**
+	 * Public username of the channel (lowercase, no @) as of the last indexing cycle; null for private chats.
+	 * Lets the join queue skip links of chats the account is already in, see getValidChatIdByUsername.
+	 */
+	username: string | null;
+	/**
+	 * 1 when the chat is no longer among the account dialogs (left, deleted, banned...): the indexing cycle
+	 * sets it and clears it again if the chat comes back. Such a chat keeps its rows but does not count as joined.
+	 */
+	invalid: number;
 }
 
 export interface IndexingProgress {
@@ -81,6 +93,8 @@ export interface TelegramAccount {
 	session: string | null;
 	/** Whether searches reach the Telegram index. Independent of being signed in. */
 	searchEnabled: boolean;
+	/** Whether video files the indexer finds in already indexed chats are published in the indexer feed (see services/indexerfeed). */
+	feedEnabled: boolean;
 }
 
 interface AccountRow {
@@ -88,9 +102,10 @@ interface AccountRow {
 	api_hash: string | null;
 	session: string | null;
 	search_enabled: number;
+	feed_enabled: number;
 }
 
-const DEFAULT_ACCOUNT: TelegramAccount = { apiId: null, apiHash: null, session: null, searchEnabled: true };
+const DEFAULT_ACCOUNT: TelegramAccount = { apiId: null, apiHash: null, session: null, searchEnabled: true, feedEnabled: false };
 
 export interface ActiveDownloadRow {
 	hash: string;
@@ -102,6 +117,36 @@ export interface ActiveDownloadRow {
 	file_size: number;
 	status: string;
 	error_message?: string | null;
+}
+
+/**
+ * Where a queued join stands: `pending` waits for the worker (maybe until `next_attempt_at`), `joined` is done
+ * (also when the account was already a member), `request_sent` means the chat needs an admin to approve the
+ * join request, and `failed` is final (see `error`) until the user retries it.
+ */
+export type JoinStatus = 'pending' | 'joined' | 'request_sent' | 'failed';
+
+/** A channel link the account was asked to join, see the `join_queue` table. Every `_at` is epoch ms. */
+export interface JoinQueueRow {
+	id: number;
+	/** The link as the user gave it, trimmed. */
+	link: string;
+	/** Normalized form that identifies the chat behind the link (`@name` or `+hash`), unique in the queue. */
+	target: string;
+	status: JoinStatus;
+	/** Whether to enable indexing for the chat once joined. */
+	index_on_join: number;
+	/** The joined chat, once known. */
+	chat_id: string | null;
+	chat_title: string | null;
+	/** Why the last attempt failed or was deferred; null when nothing went wrong so far. */
+	error: string | null;
+	attempts: number;
+	added_at: number;
+	/** When the last attempt ran; null while never tried. */
+	attempted_at: number | null;
+	/** When a pending link may be tried again (after a FLOOD_WAIT or a transient failure); null means right away. */
+	next_attempt_at: number | null;
 }
 
 // Quote each term so FTS5-special chars (' - : & ( ) ") match literally
@@ -120,7 +165,18 @@ export function toFtsMatchExpr(query: string): string | null {
 	return expr.length > 0 ? expr : null;
 }
 
+/**
+ * Bumped when the search index has to be rebuilt once on existing installs; kept in PRAGMA user_version.
+ *   1 — names (chat_title, topic_name) used to be read live at delete time, which left stale entries behind
+ *       whenever a chat or topic had been renamed since it was indexed (see reindexWhere).
+ */
+const INDEX_VERSION = 1;
+
+/** The columns of messages_fts in the order the view yields them; also what the index statements feed. */
+const FTS_COLUMNS = 'chat_id, chat_title, topic_id, topic_name, message_id, sender_id, date, text, file_name';
+
 export class TelegramIndexerDB {
+	private readonly logger = LoggerFactory.create(this);
 	private db: Database.Database;
 
 	constructor(dbPath: string) {
@@ -197,6 +253,8 @@ export class TelegramIndexerDB {
 			'ALTER TABLE indexing_progress ADD COLUMN last_checked_at INTEGER',
 			'ALTER TABLE indexing_progress ADD COLUMN last_indexed_at INTEGER',
 			'ALTER TABLE indexing_progress ADD COLUMN last_error TEXT',
+			'ALTER TABLE chats ADD COLUMN username TEXT',
+			'ALTER TABLE chats ADD COLUMN invalid INTEGER NOT NULL DEFAULT 0',
 		];
 		for (const sql of migrations) {
 			try {
@@ -213,9 +271,15 @@ export class TelegramIndexerDB {
 				api_id INTEGER,
 				api_hash TEXT,
 				session TEXT,
-				search_enabled INTEGER NOT NULL DEFAULT 1
+				search_enabled INTEGER NOT NULL DEFAULT 1,
+				feed_enabled INTEGER NOT NULL DEFAULT 0
 			);
 		`);
+		try {
+			this.db.exec('ALTER TABLE account ADD COLUMN feed_enabled INTEGER NOT NULL DEFAULT 0');
+		} catch {
+			// Column already exists — ignore
+		}
 
 		// Operational per-message metadata that plays no part in search. Kept apart from
 		// messages_content so writing it never fires the FTS update trigger; add here any
@@ -228,6 +292,24 @@ export class TelegramIndexerDB {
 				message_id INTEGER NOT NULL,
 				media_verified_at INTEGER,
 				PRIMARY KEY (chat_id, message_id)
+			);
+		`);
+
+		// Channel links the account was asked to join, worked through in the background one at a time, see JoinQueueRow
+		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS join_queue (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				link TEXT NOT NULL,
+				target TEXT NOT NULL UNIQUE,
+				status TEXT NOT NULL DEFAULT 'pending',
+				index_on_join INTEGER NOT NULL DEFAULT 0,
+				chat_id TEXT,
+				chat_title TEXT,
+				error TEXT,
+				attempts INTEGER NOT NULL DEFAULT 0,
+				added_at INTEGER NOT NULL,
+				attempted_at INTEGER,
+				next_attempt_at INTEGER
 			);
 		`);
 
@@ -319,15 +401,77 @@ export class TelegramIndexerDB {
 				);
 			END;
 		`);
+
+		// Indexes built before INDEX_VERSION may hold stale entries; one rebuild brings them in line with the content
+		const indexVersion = this.db.pragma('user_version', { simple: true }) as number;
+		if (indexVersion < INDEX_VERSION) {
+			if (indexVersion > 0 || this.countMessages() > 0)
+				this.logger.info('Rebuilding the Telegram search index once to drop stale entries left by renamed chats and topics...');
+			this.rebuildIndex();
+			this.db.pragma(`user_version = ${INDEX_VERSION}`);
+		}
+	}
+
+	// ── Search index maintenance ──────────────────────────────────────────────
+
+	private countMessages(): number {
+		return (this.db.prepare('SELECT COUNT(*) AS n FROM messages_content').get() as { n: number }).n;
+	}
+
+	/** Rebuilds the FTS index from messages_view: the one cure once its entries no longer match the content. */
+	public rebuildIndex() {
+		this.db.exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`);
+	}
+
+	/**
+	 * Runs `fn`; if SQLite reports the index as corrupt (what FTS5 does once its entries disagree with the
+	 * content, "database disk image is malformed"), rebuilds the index and runs `fn` again. A statement that
+	 * failed inside a transaction was rolled back, so the retry starts clean.
+	 */
+	private withIndexRepair<T>(fn: () => T): T {
+		try {
+			return fn();
+		} catch (e: any) {
+			if (typeof e?.code !== 'string' || !e.code.startsWith('SQLITE_CORRUPT')) throw e;
+			this.logger.warn(`The Telegram search index is corrupt (${e.message}); rebuilding it and retrying`);
+			this.rebuildIndex();
+			return fn();
+		}
+	}
+
+	/**
+	 * Re-indexes the messages selected by `where` around a change of a name they are indexed with. FTS5
+	 * only removes an entry when it is handed the exact values that were indexed, and the triggers read the
+	 * names live from chats/topics, so a rename has to go through here: the entries are dropped while the
+	 * view still yields the old name, `change` applies it, and the rows are indexed again with the new one.
+	 */
+	private reindexWhere(where: string, params: unknown[], change: () => void) {
+		this.withIndexRepair(() =>
+			this.db.transaction(() => {
+				this.db
+					.prepare(
+						`INSERT INTO messages_fts(messages_fts, rowid, ${FTS_COLUMNS}) SELECT 'delete', id, ${FTS_COLUMNS} FROM messages_view WHERE ${where}`
+					)
+					.run(...params);
+				change();
+				this.db.prepare(`INSERT INTO messages_fts(rowid, ${FTS_COLUMNS}) SELECT id, ${FTS_COLUMNS} FROM messages_view WHERE ${where}`).run(...params);
+			})()
+		);
 	}
 
 	// ── Account ───────────────────────────────────────────────────────────────
 
 	/** The stored account, or the defaults (nothing stored, search enabled) before the first sign-in. */
 	public getAccount(): TelegramAccount {
-		const row = this.db.prepare('SELECT api_id, api_hash, session, search_enabled FROM account WHERE id = 1').get() as AccountRow | undefined;
+		const row = this.db.prepare('SELECT api_id, api_hash, session, search_enabled, feed_enabled FROM account WHERE id = 1').get() as AccountRow | undefined;
 		if (!row) return { ...DEFAULT_ACCOUNT };
-		return { apiId: row.api_id, apiHash: row.api_hash, session: row.session, searchEnabled: row.search_enabled === 1 };
+		return {
+			apiId: row.api_id,
+			apiHash: row.api_hash,
+			session: row.session,
+			searchEnabled: row.search_enabled === 1,
+			feedEnabled: row.feed_enabled === 1,
+		};
 	}
 
 	/** Stores the given fields of the account, keeping the others as they are. */
@@ -335,26 +479,44 @@ export class TelegramIndexerDB {
 		const next = { ...this.getAccount(), ...patch };
 		this.db
 			.prepare(
-				`INSERT INTO account (id, api_id, api_hash, session, search_enabled)
-				 VALUES (1, ?, ?, ?, ?)
+				`INSERT INTO account (id, api_id, api_hash, session, search_enabled, feed_enabled)
+				 VALUES (1, ?, ?, ?, ?, ?)
 				 ON CONFLICT(id) DO UPDATE SET api_id = excluded.api_id, api_hash = excluded.api_hash,
-				 	session = excluded.session, search_enabled = excluded.search_enabled`
+				 	session = excluded.session, search_enabled = excluded.search_enabled, feed_enabled = excluded.feed_enabled`
 			)
-			.run(next.apiId, next.apiHash, next.session, next.searchEnabled ? 1 : 0);
+			.run(next.apiId, next.apiHash, next.session, next.searchEnabled ? 1 : 0, next.feedEnabled ? 1 : 0);
 	}
 
 	// ── Chats ─────────────────────────────────────────────────────────────────
 
-	public registerChat(id: string, title: string, type: string) {
-		this.db
-			.prepare(
-				`
-				INSERT INTO chats (id, title, type) 
-				VALUES (?, ?, ?) 
-				ON CONFLICT(id) DO UPDATE SET title = ?
-			`
-			)
-			.run(id, title, type, title);
+	/**
+	 * Adds the chat, or picks up its new title (its messages are re-indexed under it, see reindexWhere) and
+	 * username; a chat marked invalid becomes valid again, since the account has it. An `undefined` username
+	 * leaves the stored one alone.
+	 */
+	public registerChat(id: string, title: string, type: string, username?: string | null) {
+		const existing = this.db.prepare('SELECT title, username, invalid FROM chats WHERE id = ?').get(id) as
+			Pick<Chat, 'title' | 'username' | 'invalid'> | undefined;
+		if (!existing) {
+			this.db.prepare('INSERT INTO chats (id, title, type, username) VALUES (?, ?, ?, ?)').run(id, title, type, username ?? null);
+			return;
+		}
+		if (username !== undefined && username !== existing.username) this.db.prepare('UPDATE chats SET username = ? WHERE id = ?').run(username, id);
+		if (existing.invalid) this.db.prepare('UPDATE chats SET invalid = 0 WHERE id = ?').run(id);
+		if (existing.title === title) return;
+		this.reindexWhere('chat_id = ?', [id], () => this.db.prepare('UPDATE chats SET title = ? WHERE id = ?').run(title, id));
+	}
+
+	/** Marks as invalid every chat not among `presentIds` (the account dialogs), see Chat.invalid; returns how many changed. */
+	public markChatsInvalidNotIn(presentIds: string[]): number {
+		return this.db.prepare('UPDATE chats SET invalid = 1 WHERE invalid = 0 AND id NOT IN (SELECT value FROM json_each(?))').run(JSON.stringify(presentIds))
+			.changes;
+	}
+
+	/** The chat the account is in under this public username (lowercase, no @), if any; invalid chats (see Chat.invalid) do not count. */
+	public getValidChatIdByUsername(username: string): string | undefined {
+		const row = this.db.prepare('SELECT id FROM chats WHERE username = ? AND invalid = 0').get(username.toLowerCase()) as Pick<Chat, 'id'> | undefined;
+		return row?.id;
 	}
 
 	public getIndexingEnabledChats(): Array<Pick<Chat, 'id' | 'title'>> {
@@ -396,14 +558,23 @@ export class TelegramIndexerDB {
 			.run(chatId, checkedAt, error);
 	}
 
+	/**
+	 * Adds the topic or picks up its new name. Messages of the topic indexed so far (under the old name, or
+	 * with no name when the topic was unknown) are re-indexed, see reindexWhere.
+	 */
 	public registerTopic(chatId: string, topicId: number, topicName: string) {
-		this.db
-			.prepare(
-				`INSERT INTO topics (chat_id, topic_id, topic_name)
-				 VALUES (?, ?, ?)
-				 ON CONFLICT(chat_id, topic_id) DO UPDATE SET topic_name = ?`
-			)
-			.run(chatId, topicId, topicName, topicName);
+		const existing = this.db.prepare('SELECT topic_name FROM topics WHERE chat_id = ? AND topic_id = ?').get(chatId, topicId) as
+			{ topic_name: string | null } | undefined;
+		if (existing && existing.topic_name === topicName) return;
+		this.reindexWhere('chat_id = ? AND topic_id = ?', [chatId, topicId], () =>
+			this.db
+				.prepare(
+					`INSERT INTO topics (chat_id, topic_id, topic_name)
+					 VALUES (?, ?, ?)
+					 ON CONFLICT(chat_id, topic_id) DO UPDATE SET topic_name = excluded.topic_name`
+				)
+				.run(chatId, topicId, topicName)
+		);
 	}
 
 	public insertMessages(messages: MessageInput[]) {
@@ -425,19 +596,7 @@ export class TelegramIndexerDB {
 			}
 		});
 
-		insertMany(messages);
-	}
-
-	public search(query: string, limit: number = 20): MessageRow[] {
-		const match = toFtsMatchExpr(query);
-		if (match === null) return [];
-		return this.db
-			.prepare(
-				`
-				SELECT * FROM messages_fts WHERE messages_fts MATCH ? ORDER BY rank LIMIT ?
-			`
-			)
-			.all(match, limit) as MessageRow[];
+		this.withIndexRepair(() => insertMany(messages));
 	}
 
 	public getMessage(chatId: string, messageId: number): MessageRow | undefined {
@@ -464,14 +623,16 @@ export class TelegramIndexerDB {
 	public async searchFiles(query: string, limit: number = 50, cursorId: number = 0): Promise<{ rows: MessageRow[]; nextCursor: number | null }> {
 		// better-sqlite3 is synchronous; yield to the event loop before running the
 		// query so callers in pagination loops don't starve other async work.
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await sleep(0);
 
 		const match = toFtsMatchExpr(query);
 		if (match === null) return { rows: [], nextCursor: null };
 
-		const rows = this.db
-			.prepare(
-				`
+		const rows = this.withIndexRepair(
+			() =>
+				this.db
+					.prepare(
+						`
 				SELECT mv.*, mm.media_verified_at, bm25(messages_fts) AS score
 				FROM messages_fts
 				JOIN messages_view mv ON mv.id = messages_fts.rowid
@@ -484,8 +645,9 @@ export class TelegramIndexerDB {
 				ORDER BY messages_fts.rowid
 				LIMIT ?
 			`
-			)
-			.all(match, cursorId, limit) as MessageRow[];
+					)
+					.all(match, cursorId, limit) as MessageRow[]
+		);
 
 		const nextCursor = rows.length === limit ? rows[rows.length - 1].id : null;
 		return { rows, nextCursor };
@@ -514,7 +676,7 @@ export class TelegramIndexerDB {
 				deleteMetadata.run(r.chat_id, r.message_id);
 			}
 		});
-		deleteMany(refs);
+		this.withIndexRepair(() => deleteMany(refs));
 	}
 
 	public getContext(chatId: string, messageId: number, window: number = 5): MessageRow[] {
@@ -538,7 +700,7 @@ export class TelegramIndexerDB {
 	public getChatsOverview(): ChatOverview[] {
 		return this.db
 			.prepare(
-				`SELECT c.id, c.title, c.type, c.indexing_enabled,
+				`SELECT c.id, c.title, c.type, c.indexing_enabled, c.username, c.invalid,
 					COALESCE(m.message_count, 0) AS message_count,
 					COALESCE(m.media_count, 0)   AS media_count,
 					COALESCE(m.media_size, 0)    AS media_size,
@@ -576,20 +738,24 @@ export class TelegramIndexerDB {
 	 * FTS rows go via the delete trigger.
 	 */
 	public clearChatIndex(chatId: string) {
-		this.db.transaction(() => {
-			this.db.prepare('DELETE FROM messages_content WHERE chat_id = ?').run(chatId);
-			this.db.prepare('DELETE FROM messages_metadata WHERE chat_id = ?').run(chatId);
-			this.db.prepare('DELETE FROM topics WHERE chat_id = ?').run(chatId);
-			this.db.prepare('DELETE FROM indexing_progress WHERE chat_id = ?').run(chatId);
-		})();
+		this.withIndexRepair(() => this.db.transaction(() => this.purgeChatIndexRows(chatId))());
 	}
 
 	/** Removes the chat and everything indexed for it; registerChat brings it back (disabled) if the account still has it. */
 	public deleteChat(chatId: string) {
-		this.db.transaction(() => {
-			this.clearChatIndex(chatId);
-			this.db.prepare('DELETE FROM chats WHERE id = ?').run(chatId);
-		})();
+		this.withIndexRepair(() =>
+			this.db.transaction(() => {
+				this.purgeChatIndexRows(chatId);
+				this.db.prepare('DELETE FROM chats WHERE id = ?').run(chatId);
+			})()
+		);
+	}
+
+	private purgeChatIndexRows(chatId: string) {
+		this.db.prepare('DELETE FROM messages_content WHERE chat_id = ?').run(chatId);
+		this.db.prepare('DELETE FROM messages_metadata WHERE chat_id = ?').run(chatId);
+		this.db.prepare('DELETE FROM topics WHERE chat_id = ?').run(chatId);
+		this.db.prepare('DELETE FROM indexing_progress WHERE chat_id = ?').run(chatId);
 	}
 
 	// Active Downloads management
@@ -637,6 +803,86 @@ export class TelegramIndexerDB {
 
 	public getActiveDownload(hash: string) {
 		return this.db.prepare<[string], ActiveDownloadRow>('SELECT * FROM active_downloads WHERE hash = ?').get(hash);
+	}
+
+	// ── Join queue ────────────────────────────────────────────────────────────
+
+	/** Every queued link, oldest first. */
+	public getJoinQueue(): JoinQueueRow[] {
+		return this.db.prepare('SELECT * FROM join_queue ORDER BY id').all() as JoinQueueRow[];
+	}
+
+	public getJoinQueueRow(id: number): JoinQueueRow | undefined {
+		return this.db.prepare('SELECT * FROM join_queue WHERE id = ?').get(id) as JoinQueueRow | undefined;
+	}
+
+	/** The oldest pending link whose wait (if any) is over at `now`, or undefined. */
+	public getNextPendingJoin(now: number): JoinQueueRow | undefined {
+		return this.db
+			.prepare(`SELECT * FROM join_queue WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?) ORDER BY id LIMIT 1`)
+			.get(now) as JoinQueueRow | undefined;
+	}
+
+	/** The earliest moment a pending link becomes due, or null when nothing is pending. */
+	public getEarliestPendingJoinAt(): number | null {
+		const row = this.db.prepare(`SELECT MIN(COALESCE(next_attempt_at, 0)) AS at FROM join_queue WHERE status = 'pending'`).get() as { at: number | null };
+		return row.at;
+	}
+
+	/**
+	 * Queues a link for its target: a new row, or the existing one brought back to pending with the new
+	 * settings unless it is already pending or joined (then it is left alone). Returns the row.
+	 */
+	public enqueueJoin(link: string, target: string, indexOnJoin: boolean, addedAt: number): JoinQueueRow {
+		const existing = this.db.prepare('SELECT * FROM join_queue WHERE target = ?').get(target) as JoinQueueRow | undefined;
+		if (existing && (existing.status === 'pending' || existing.status === 'joined')) return existing;
+		if (existing) {
+			this.db
+				.prepare(
+					`UPDATE join_queue SET link = ?, status = 'pending', index_on_join = ?, error = NULL, attempts = 0, added_at = ?, attempted_at = NULL, next_attempt_at = NULL
+					 WHERE id = ?`
+				)
+				.run(link, indexOnJoin ? 1 : 0, addedAt, existing.id);
+			return this.getJoinQueueRow(existing.id)!;
+		}
+		const result = this.db
+			.prepare('INSERT INTO join_queue (link, target, index_on_join, added_at) VALUES (?, ?, ?, ?)')
+			.run(link, target, indexOnJoin ? 1 : 0, addedAt);
+		return this.getJoinQueueRow(Number(result.lastInsertRowid))!;
+	}
+
+	/** Puts a failed or request-sent link back in the queue, to be tried right away. */
+	public resetJoin(id: number) {
+		this.db
+			.prepare(
+				`UPDATE join_queue SET status = 'pending', error = NULL, attempts = 0, next_attempt_at = NULL WHERE id = ? AND status IN ('failed', 'request_sent')`
+			)
+			.run(id);
+	}
+
+	/** Counts an attempt that reached Telegram and records its outcome. */
+	public recordJoinAttempt(
+		id: number,
+		attemptedAt: number,
+		patch: Partial<Pick<JoinQueueRow, 'status' | 'chat_id' | 'chat_title' | 'error' | 'next_attempt_at'>>
+	) {
+		const row = this.getJoinQueueRow(id);
+		if (!row) return;
+		const next = { ...row, ...patch, attempted_at: attemptedAt, attempts: row.attempts + 1 };
+		this.db
+			.prepare(
+				`UPDATE join_queue SET status = ?, chat_id = ?, chat_title = ?, error = ?, attempts = ?, attempted_at = ?, next_attempt_at = ? WHERE id = ?`
+			)
+			.run(next.status, next.chat_id, next.chat_title, next.error, next.attempts, next.attempted_at, next.next_attempt_at, id);
+	}
+
+	public deleteJoin(id: number) {
+		this.db.prepare('DELETE FROM join_queue WHERE id = ?').run(id);
+	}
+
+	/** Drops every link the worker is done with (joined, failed or waiting for an admin); returns how many went. */
+	public deleteFinishedJoins(): number {
+		return this.db.prepare(`DELETE FROM join_queue WHERE status != 'pending'`).run().changes;
 	}
 
 	public close() {
