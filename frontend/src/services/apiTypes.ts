@@ -21,6 +21,7 @@ export type {
 	MediaTransfer,
 	MediaTransfersResponse,
 	MediaSearchResult,
+	MediaSearchStartedResponse,
 	MediaSearchResponse,
 	MediaSearchStatusResponse,
 	SearchProviderId,
@@ -34,8 +35,12 @@ export type {
 	ArrSyncStatusResponse,
 	WantedItem,
 	WantedListResponse,
+	ProviderFeedSource,
+	ProviderFeedStatus,
+	ProviderFeedStatusResponse,
 } from '../../../backend/src/types/IndexerFeedTypes';
 export type { AuthStatus } from '../../../backend/src/types/AuthTypes';
+export type { DiskDir, DiskRole, DiskSpace } from '../../../backend/src/types/SystemTypes';
 
 /**
  * Runtime counterpart of the backend's CHUNK_STATUS enum, which only reaches the frontend as a type.
