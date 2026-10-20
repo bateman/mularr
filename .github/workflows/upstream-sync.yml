@@ -1,0 +1,180 @@
+name: upstream-sync
+# Fork-only: weekly merge of joecarl/mularr main into this fork.
+# Pushes upstream main to the sync/upstream branch, opens (or updates) a PR to main,
+# waits for CI, merges it when green and deletes the sync branch.
+# Conflicts or red CI leave the PR (and branch) open.
+# The merge push to main triggers docker-publish.yml, which publishes the GHCR image.
+# Needs the UPSTREAM_SYNC_TOKEN secret: a fine-grained PAT for this repo with
+# Contents, Pull requests and Workflows set to read/write. The default GITHUB_TOKEN
+# cannot push workflow-file changes, and its pushes and PRs do not trigger CI.
+on:
+  schedule:
+    - cron: '0 14 * * 5' # Fridays 14:00 Italian time (DST-aware)
+      timezone: Europe/Rome
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.repository != 'joecarl/mularr'
+    name: Sync upstream
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+      UPSTREAM: https://github.com/joecarl/mularr.git
+      SYNC_BRANCH: sync/upstream
+      BASE_BRANCH: main
+      # Checks that must be reported on the PR before it is merged (fail-safe if renamed).
+      REQUIRED_CHECKS: build
+    steps:
+      - name: Check token
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::Add the UPSTREAM_SYNC_TOKEN repository secret (see the header of upstream-sync.yml)."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.BASE_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+      - name: Push upstream to sync branch
+        id: push
+        run: |
+          set -euo pipefail
+          git fetch --no-tags "${UPSTREAM}" main
+          sha="$(git rev-parse FETCH_HEAD)"
+          if git merge-base --is-ancestor "${sha}" HEAD; then
+            echo "Fork already contains upstream ${sha}; nothing to do."
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          head=""
+          if git ls-remote --exit-code --heads origin "${SYNC_BRANCH}" > /dev/null; then
+            git fetch --no-tags origin "+refs/heads/${SYNC_BRANCH}:refs/remotes/origin/${SYNC_BRANCH}"
+            head="$(git rev-parse "refs/remotes/origin/${SYNC_BRANCH}")"
+          else
+            rc=$?
+            [ "${rc}" -eq 2 ] || exit "${rc}" # 2 = branch missing; anything else is a real error.
+          fi
+          pushed=false
+          if [ -n "${head}" ] && git merge-base --is-ancestor "${sha}" "${head}"; then
+            echo "${SYNC_BRANCH} already contains upstream ${sha}."
+          elif [ -n "${head}" ] && ! git merge-base --is-ancestor "${head}" "${sha}" \
+            && ! git merge-base --is-ancestor "${head}" HEAD; then
+            # Unmerged non-upstream commits, e.g. a conflict fix made on the open PR: never overwrite.
+            echo "::warning::${SYNC_BRANCH} has unmerged commits that are not upstream (e.g. a conflict fix); keeping it. Newer upstream commits follow after it is merged."
+          else
+            # New branch, fast-forward, or a leftover branch already merged into main.
+            git push --force-with-lease="refs/heads/${SYNC_BRANCH}:${head}" origin "${sha}:refs/heads/${SYNC_BRANCH}"
+            head="${sha}"
+            pushed=true
+          fi
+          synced="$(git merge-base "${head}" "${sha}")"
+          count="$(git rev-list --count "HEAD..${synced}")"
+          echo "Syncing ${count} upstream commit(s), up to ${synced}; PR head ${head}."
+          {
+            echo "changed=true"
+            echo "pushed=${pushed}"
+            echo "head=${head}"
+            echo "short=${synced:0:7}"
+            echo "count=${count}"
+          } >> "${GITHUB_OUTPUT}"
+      - name: Open or update PR
+        id: pr
+        if: steps.push.outputs.changed == 'true'
+        env:
+          PUSHED: ${{ steps.push.outputs.pushed }}
+          SHORT: ${{ steps.push.outputs.short }}
+          COUNT: ${{ steps.push.outputs.count }}
+        run: |
+          set -euo pipefail
+          title="Merge upstream joecarl/mularr main (${SHORT})"
+          body="Automated weekly sync: ${COUNT} new upstream commit(s) from joecarl/mularr@main, up to ${SHORT}.
+          This PR is merged by the upstream-sync workflow once CI is green. It stays open on conflicts or failing CI."
+          pr="$(gh pr list --head "${SYNC_BRANCH}" --base "${BASE_BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          if [ -z "${pr}" ]; then
+            url="$(gh pr create --head "${SYNC_BRANCH}" --base "${BASE_BRANCH}" --title "${title}" --body "${body}")"
+            pr="${url##*/}"
+          elif [ "${PUSHED}" = true ]; then
+            # Only refresh the description when the branch moved, so manual notes on a kept PR survive.
+            gh pr edit "${pr}" --title "${title}" --body "${body}"
+          fi
+          echo "PR #${pr}"
+          echo "number=${pr}" >> "${GITHUB_OUTPUT}"
+      - name: Wait for mergeability
+        if: steps.push.outputs.changed == 'true'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.push.outputs.head }}
+        run: |
+          set -euo pipefail
+          # Wait until GitHub has seen this run's head and computed mergeability for it.
+          state=UNKNOWN
+          for _ in $(seq 1 20); do
+            out="$(gh pr view "${PR}" --json headRefOid,mergeable --jq '"\(.headRefOid) \(.mergeable)"')"
+            if [ "${out% *}" = "${HEAD_SHA}" ] && [ "${out#* }" != UNKNOWN ]; then
+              state="${out#* }"
+              break
+            fi
+            sleep 15
+          done
+          echo "Mergeable: ${state}"
+          case "${state}" in
+            MERGEABLE) ;;
+            CONFLICTING)
+              marker='<!-- upstream-sync:conflict -->'
+              if ! gh pr view "${PR}" --json comments --jq '.comments[].body' | grep -qF "${marker}"; then
+                gh pr comment "${PR}" --body "$(printf '%s\n%s' "${marker}" \
+                  'upstream-sync: this PR has merge conflicts and needs a manual merge. Resolve them on this branch; the next run will not overwrite the fix.')"
+              fi
+              echo "::error::PR #${PR} has merge conflicts; resolve them manually."
+              exit 1
+              ;;
+            *)
+              echo "::error::GitHub has not computed mergeability for PR #${PR} at ${HEAD_SHA}; re-run later."
+              exit 1
+              ;;
+          esac
+      - name: Wait for CI
+        if: steps.push.outputs.changed == 'true'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          PUSHED: ${{ steps.push.outputs.pushed }}
+        run: |
+          set -euo pipefail
+          # Give the push-triggered workflows time to register their checks.
+          if [ "${PUSHED}" = true ]; then sleep 60; fi
+          IFS=, read -ra required <<< "${REQUIRED_CHECKS}"
+          for _ in $(seq 1 40); do
+            names="$(gh pr checks "${PR}" --json name --jq '.[].name' 2> /dev/null || true)"
+            missing=""
+            for check in "${required[@]}"; do
+              grep -qxF "${check}" <<< "${names}" || missing="${missing}${check}; "
+            done
+            [ -z "${missing}" ] && break
+            sleep 15
+          done
+          if [ -n "${missing}" ]; then
+            echo "::error::Required checks never appeared on PR #${PR}: ${missing}(update REQUIRED_CHECKS if they were renamed)."
+            exit 1
+          fi
+          if ! gh pr checks "${PR}" --watch --interval 30; then
+            echo "::error::CI failed on PR #${PR}; leaving it open."
+            exit 1
+          fi
+      - name: Merge PR
+        if: steps.push.outputs.changed == 'true'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.push.outputs.head }}
+          SHORT: ${{ steps.push.outputs.short }}
+        run: |
+          set -euo pipefail
+          # --delete-branch removes sync/upstream; gh ignores it if GitHub already auto-deleted it.
+          gh pr merge "${PR}" --merge --delete-branch --match-head-commit "${HEAD_SHA}" \
+            --subject "Merge upstream joecarl/mularr main (${SHORT})"
