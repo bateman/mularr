@@ -293,10 +293,12 @@ export class QbittorrentController {
 	addTorrent = async (req: Request, res: Response) => {
 		this.logger.debug('Add torrent requested');
 		try {
-			// qBittorrent transmits URLs in a field called 'urls'
-			const { urls, category, paused, stopped } = req.body;
+			// .torrent uploads arrive as multipart, which no parser here reads: req.body is undefined
+			const { urls, category, paused, stopped } = req.body ?? {};
 			if (!urls) {
-				return res.status(400).send('No URLs provided');
+				this.logger.warn('Add torrent without URLs (a .torrent file upload?): Mularr only accepts its own eD2k magnet links');
+				// "Fails." (not a 4xx) so *arr reports a failed add, not "Failed to connect"
+				return res.send('Fails.');
 			}
 
 			// Sonarr/Radarr send the initial-state flag as a urlencoded STRING
@@ -323,6 +325,7 @@ export class QbittorrentController {
 				}
 			}
 
+			let added = 0;
 			for (const url of urlList) {
 				const trimmedUrl: string = url.trim();
 				this.logger.debug(`Parsing magnet: ${trimmedUrl}`);
@@ -336,6 +339,12 @@ export class QbittorrentController {
 				await this.mediaProviderService.addDownload(fileRef.ref);
 
 				const hash = fileRef.hash;
+				// Providers swallow add failures; the DB record is the proof
+				if (!this.mediaProviderService.isTracked(hash)) {
+					this.logger.warn(`Download not added for file reference: ${fileRef.ref}`);
+					continue;
+				}
+				added++;
 
 				if (categoryId) {
 					this.logger.info(`Setting category ID ${categoryId} for hash ${hash}`);
@@ -354,7 +363,8 @@ export class QbittorrentController {
 				}
 			}
 
-			res.send('Ok.');
+			// qBittorrent's own reply when nothing was added; *arr then fails the grab
+			res.send(added > 0 ? 'Ok.' : 'Fails.');
 		} catch (e: any) {
 			this.logger.error('QbittorrentController addTorrent Error:', e);
 			res.status(500).send(e.message);
