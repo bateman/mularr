@@ -2,8 +2,10 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import jwt from 'jsonwebtoken';
+import type { IncomingMessage } from 'http';
 import { Response } from 'express';
 import { __APP_CONFIG__ } from '../app-env';
+import { isCrossSite, isLocalAddress, normalizeIp, parseNetworks, resolveClientIp } from '../tools/clientAddressTools';
 import type { AuthStatus } from '../types/AuthTypes';
 import { LoggerFactory } from './logging/Logger';
 
@@ -23,6 +25,8 @@ export class AuthService {
 	private readonly username = __APP_CONFIG__.auth.username;
 	private readonly password = __APP_CONFIG__.auth.password;
 	private readonly apiKey = __APP_CONFIG__.auth.apiKey;
+	private readonly localBypass = __APP_CONFIG__.auth.required === 'disabled_for_local';
+	private readonly trustedNetworks = parseNetworks(__APP_CONFIG__.auth.trustedNetworks);
 	private readonly jwtSecret: string;
 
 	constructor(dataDir: string) {
@@ -87,11 +91,23 @@ export class AuthService {
 		return this.isApiKeyAuthEnabled() || this.isInteractiveLoginEnabled();
 	}
 
-	getStatus(): AuthStatus {
+	/** AUTH_REQUIRED=disabled_for_local and the real client IP is local: the web UI login is skipped. */
+	isLoginExempt(req: IncomingMessage): boolean {
+		if (!this.localBypass) return false;
+		const ip = resolveClientIp(req.socket.remoteAddress, req.headers, this.trustedNetworks);
+		const crossSite = isCrossSite(req.headers);
+		const exempt = !!ip && isLocalAddress(ip) && !crossSite;
+		const peer = normalizeIp(req.socket.remoteAddress ?? '');
+		this.logger.debug(`Client ${ip ?? 'unknown'} (peer ${peer}${crossSite ? ', cross-site' : ''}): login ${exempt ? 'skipped (local)' : 'required'}`);
+		return exempt;
+	}
+
+	getStatus(req: IncomingMessage): AuthStatus {
 		return {
 			enabled: this.isAuthEnabled(),
 			hasCredentials: this.isInteractiveLoginEnabled(),
 			hasApiKey: !!this.apiKey,
+			loginExempt: this.isInteractiveLoginEnabled() && this.isLoginExempt(req),
 		};
 	}
 

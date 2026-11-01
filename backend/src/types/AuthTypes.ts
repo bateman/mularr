@@ -8,4 +8,6 @@ export interface AuthStatus {
 	enabled: boolean;
 	hasCredentials: boolean;
 	hasApiKey: boolean;
+	/** This client skips the login (AUTH_REQUIRED=disabled_for_local, local IP). */
+	loginExempt: boolean;
 }
