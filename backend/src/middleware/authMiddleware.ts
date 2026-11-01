@@ -18,19 +18,9 @@ const logger = LoggerFactory.create('AuthMiddleware');
 export type AuthOutcome = { authorized: true; refreshedSid?: string } | { authorized: false; clearSid: boolean };
 
 export interface AuthOptions {
-	// When false, reject session credentials (qBit SID cookie + Bearer/query
-	// session-JWTs) and accept only the API key. Used for the Torznab indexer,
-	// which per the Newznab/Torznab contract authenticates by API key only:
-	// accepting the qBit cookie there let a wrong apikey pass whenever an *arr
-	// download-client session cookie existed for the same host.
+	// false: API key only, no session cookie/JWT (Torznab: else a stale qBit cookie let a wrong apikey pass)
 	allowSession?: boolean;
-	// Which auth posture decides whether this check enforces anything:
-	//   'api'         → enforce when any app credential is set (isAuthEnabled).
-	//                   Used for the M2M surfaces (qBit + Torznab).
-	//   'interactive' → enforce only when interactive login is enabled.
-	//                   Used for the web-UI routes and the WebSocket, so they are
-	//                   served openly (behind a trusted proxy) when
-	//                   AUTH_USERNAME/PASSWORD are unset, even if API_KEY is configured.
+	// 'api': enforce when any credential is set; 'interactive': only when login is set (web UI, WebSocket)
 	scope?: 'api' | 'interactive';
 }
 
@@ -162,13 +152,11 @@ export function createAuthMiddleware(opts: AuthOptions = {}) {
 	};
 }
 
-// Default: accepts the session cookie/JWT (qBit-compat API). Enforces whenever
-// any app credential is configured.
+// qBit-compat API: accepts the session cookie/JWT
 export const authMiddleware = createAuthMiddleware();
 
 // API-key-only — rejects the session cookie/JWT. Used for the Torznab indexer.
 export const apiKeyOnlyAuthMiddleware = createAuthMiddleware({ allowSession: false });
 
-// Web-UI routes — gated on interactive login only. When AUTH_USERNAME/PASSWORD
-// are unset the UI routes are served openly (M2M API_KEY auth is unaffected).
+// Web-UI routes: open when no login is set, whatever API_KEY says
 export const uiAuthMiddleware = createAuthMiddleware({ scope: 'interactive' });

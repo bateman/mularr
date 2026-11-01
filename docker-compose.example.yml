@@ -61,13 +61,8 @@ services:
             - SEED_RATIO_LIMIT=0
             - SEED_TIME_LIMIT_MINUTES=0
 
-            # Auth. The web-UI login and the API_KEY (machine-to-machine) auth are independent:
-            #   - Interactive login (the web UI login page) is ENABLED only when BOTH AUTH_USERNAME and AUTH_PASSWORD are set.
-            #     If either is left empty, the login page is DISABLED and the web UI/admin API are served with NO app-level auth.
-            #     SECURITY: only leave them unset when the port is NOT published to any host and access is forced through a
-            #     trusted authenticating reverse proxy / SSO (e.g. Traefik + Authelia). Otherwise anyone reaching the port has full UI access.
-            #   - API_KEY independently protects the /api/as-* endpoints (Torznab + qBittorrent) whenever it is set, regardless of the login setting.
-            #   - If NOTHING is set, the web interface AND the API are completely open.
+            # Auth: AUTH_USERNAME + AUTH_PASSWORD (set both or neither) protect the web UI; API_KEY protects /api/as-* (Torznab, qBittorrent).
+            # SECURITY: without the login pair the web UI and admin API have NO auth. Leave it unset only behind a trusted auth proxy (e.g. Authelia) with the port not published.
             - AUTH_USERNAME= # example: admin. With AUTH_PASSWORD, enables the mularr web-interface login (also accepted as the qbittorrent api password)
             - AUTH_PASSWORD= # example: admin. With AUTH_USERNAME, enables the mularr web-interface login (also accepted as the qbittorrent api password)
             - API_KEY= # example: supersecretapikey. Authenticates API requests from other apps without login (needed for torznab integration, for example. API_KEY can also be used as password with the username 'apikey' for the qbittorrent api)
