@@ -293,13 +293,12 @@ export class QbittorrentController {
 	addTorrent = async (req: Request, res: Response) => {
 		this.logger.debug('Add torrent requested');
 		try {
-			// qBittorrent transmits URLs in a field called 'urls'. A .torrent file arrives as
-			// multipart/form-data, which no body parser here reads, so req.body is undefined:
-			// Mularr only handles links, and that grab was meant for a real torrent client.
+			// .torrent uploads arrive as multipart, which no parser here reads: req.body is undefined
 			const { urls, category, paused, stopped } = req.body ?? {};
 			if (!urls) {
 				this.logger.warn('Add torrent without URLs (a .torrent file upload?): Mularr only accepts its own eD2k magnet links');
-				return res.status(400).send('No URLs provided');
+				// "Fails." (not a 4xx) so *arr reports a failed add, not "Failed to connect"
+				return res.send('Fails.');
 			}
 
 			// Sonarr/Radarr send the initial-state flag as a urlencoded STRING
@@ -340,9 +339,7 @@ export class QbittorrentController {
 				await this.mediaProviderService.addDownload(fileRef.ref);
 
 				const hash = fileRef.hash;
-				// The provider logs and swallows its own failure (e.g. aMule's "File ref error" for the
-				// magnet of a real torrent, whose dn is a release name, not an eD2k link), so check the
-				// download is tracked before reporting success.
+				// Providers swallow add failures; the DB record is the proof
 				if (!this.mediaProviderService.isTracked(hash)) {
 					this.logger.warn(`Download not added for file reference: ${fileRef.ref}`);
 					continue;
@@ -366,8 +363,7 @@ export class QbittorrentController {
 				}
 			}
 
-			// "Fails." is qBittorrent's own reply when nothing was added; Sonarr/Radarr treat it as a
-			// failed grab, so the release is marked failed instead of sitting in their queue forever.
+			// qBittorrent's own reply when nothing was added; *arr then fails the grab
 			res.send(added > 0 ? 'Ok.' : 'Fails.');
 		} catch (e: any) {
 			this.logger.error('QbittorrentController addTorrent Error:', e);

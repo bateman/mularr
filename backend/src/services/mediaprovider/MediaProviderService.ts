@@ -147,7 +147,7 @@ export class MediaProviderService {
 
 	// ---- Download management ---------------------------------------------------
 
-	/** True when a download with this hash is tracked. Providers swallow their own add failures, so this is the proof that one was really added. */
+	/** True when a download with this hash is tracked (proof an add really succeeded). */
 	isTracked(hash: string): boolean {
 		return !!this.db.getDownload(hash.toLowerCase());
 	}
