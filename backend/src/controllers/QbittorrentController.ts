@@ -293,9 +293,12 @@ export class QbittorrentController {
 	addTorrent = async (req: Request, res: Response) => {
 		this.logger.debug('Add torrent requested');
 		try {
-			// qBittorrent transmits URLs in a field called 'urls'
-			const { urls, category, paused, stopped } = req.body;
+			// qBittorrent transmits URLs in a field called 'urls'. A .torrent file arrives as
+			// multipart/form-data, which no body parser here reads, so req.body is undefined:
+			// Mularr only handles links, and that grab was meant for a real torrent client.
+			const { urls, category, paused, stopped } = req.body ?? {};
 			if (!urls) {
+				this.logger.warn('Add torrent without URLs (a .torrent file upload?): Mularr only accepts its own eD2k magnet links');
 				return res.status(400).send('No URLs provided');
 			}
 
@@ -323,6 +326,7 @@ export class QbittorrentController {
 				}
 			}
 
+			let added = 0;
 			for (const url of urlList) {
 				const trimmedUrl: string = url.trim();
 				this.logger.debug(`Parsing magnet: ${trimmedUrl}`);
@@ -336,6 +340,14 @@ export class QbittorrentController {
 				await this.mediaProviderService.addDownload(fileRef.ref);
 
 				const hash = fileRef.hash;
+				// The provider logs and swallows its own failure (e.g. aMule's "File ref error" for the
+				// magnet of a real torrent, whose dn is a release name, not an eD2k link), so check the
+				// download is tracked before reporting success.
+				if (!this.mediaProviderService.isTracked(hash)) {
+					this.logger.warn(`Download not added for file reference: ${fileRef.ref}`);
+					continue;
+				}
+				added++;
 
 				if (categoryId) {
 					this.logger.info(`Setting category ID ${categoryId} for hash ${hash}`);
@@ -354,7 +366,9 @@ export class QbittorrentController {
 				}
 			}
 
-			res.send('Ok.');
+			// "Fails." is qBittorrent's own reply when nothing was added; Sonarr/Radarr treat it as a
+			// failed grab, so the release is marked failed instead of sitting in their queue forever.
+			res.send(added > 0 ? 'Ok.' : 'Fails.');
 		} catch (e: any) {
 			this.logger.error('QbittorrentController addTorrent Error:', e);
 			res.status(500).send(e.message);
