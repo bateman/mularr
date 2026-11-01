@@ -157,10 +157,7 @@ async function main() {
 
 	// -- Setup routes -------------------------------------------------------------
 
-	// Wraps a router with an auth middleware so all its routes are protected.
-	// UI routes default to uiAuthMiddleware (gated on interactive login, so they
-	// are open when AUTH_USERNAME/PASSWORD are unset). Pass a specific middleware
-	// (e.g. apiKeyOnlyAuthMiddleware) to override per-route.
+	// Protects all routes of a router; web-UI auth unless another middleware is passed
 	const withAuth = (router: express.Router, mw: express.RequestHandler = uiAuthMiddleware): express.Router => {
 		const wrapper = express.Router();
 		wrapper.use(mw);

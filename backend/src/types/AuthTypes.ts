@@ -8,6 +8,4 @@ export interface AuthStatus {
 	enabled: boolean;
 	hasCredentials: boolean;
 	hasApiKey: boolean;
-	/** True only when BOTH AUTH_USERNAME and AUTH_PASSWORD are set: the web UI shows the login page. */
-	interactiveLoginEnabled: boolean;
 }

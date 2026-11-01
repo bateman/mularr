@@ -28,11 +28,9 @@ export class AuthService {
 	constructor(dataDir: string) {
 		this.jwtSecret = this.resolveJwtSecret(dataDir);
 
-		// Partial interactive credentials are ambiguous: interactive login needs
-		// BOTH username and password, so a half-configured pair silently disables
-		// the login UI. Warn so it isn't mistaken for an enabled login.
+		// Fail closed: a half-set pair would otherwise leave every route open
 		if (!!this.username !== !!this.password) {
-			this.logger.warn('Only one of AUTH_USERNAME/AUTH_PASSWORD is set — interactive login stays DISABLED. Set both to enable it.');
+			throw new Error('Only one of AUTH_USERNAME/AUTH_PASSWORD is set. Set both to enable login, or neither.');
 		}
 	}
 
@@ -74,12 +72,7 @@ export class AuthService {
 		return secret;
 	}
 
-	/**
-	 * Interactive login (the web UI login page + session gate) is enabled only
-	 * when BOTH AUTH_USERNAME and AUTH_PASSWORD are set. When disabled, the web
-	 * UI is served without a login page — intended to run behind a trusted
-	 * authenticating reverse proxy / SSO that handles human auth.
-	 */
+	/** Web UI login; when off, the UI is served open (meant for a trusted auth proxy). */
 	isInteractiveLoginEnabled(): boolean {
 		return !!(this.username && this.password);
 	}
@@ -89,11 +82,7 @@ export class AuthService {
 		return !!this.apiKey;
 	}
 
-	/**
-	 * Whether any app-level credential is configured. Gates the M2M middlewares
-	 * and the qBittorrent open-mode fallback. True when API_KEY is set or when
-	 * interactive login is fully configured.
-	 */
+	/** Any app credential set: gates the M2M surfaces (qBittorrent, Torznab). */
 	isAuthEnabled(): boolean {
 		return this.isApiKeyAuthEnabled() || this.isInteractiveLoginEnabled();
 	}
@@ -101,9 +90,8 @@ export class AuthService {
 	getStatus(): AuthStatus {
 		return {
 			enabled: this.isAuthEnabled(),
-			hasCredentials: !!(this.username && this.password),
+			hasCredentials: this.isInteractiveLoginEnabled(),
 			hasApiKey: !!this.apiKey,
-			interactiveLoginEnabled: this.isInteractiveLoginEnabled(),
 		};
 	}
 

@@ -134,7 +134,7 @@ qBittorrent-compatible client. The two are controlled independently:
 
 | Variable        | Purpose                                                                                                                                                                  |
 | :-------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_USERNAME` | Username for the web UI login page. Interactive login is enabled **only when both `AUTH_USERNAME` and `AUTH_PASSWORD` are set** (non-empty).                              |
+| `AUTH_USERNAME` | Username for the web UI login page. Set **both** `AUTH_USERNAME` and `AUTH_PASSWORD` to enable login, or neither: Mularr refuses to start with only one.        |
 | `AUTH_PASSWORD` | Password for the web UI login page. Also accepted as the qBittorrent API password.                                                                                       |
 | `API_KEY`       | Machine-to-machine key for `/api/as-torznab-indexer*` and `/api/as-qbittorrent*`. Enforced whenever it is set, independently of interactive login. Also usable as the qBittorrent API password (with any username). |
 | `JWT_SECRET`    | Secret used to sign session JWTs. If unset, a random secret is generated on startup (existing sessions are invalidated on restart).                                      |
