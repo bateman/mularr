@@ -138,6 +138,8 @@ qBittorrent-compatible client. The two are controlled independently:
 | `AUTH_PASSWORD` | Password for the web UI login page. Also accepted as the qBittorrent API password.                                                                                       |
 | `API_KEY`       | Machine-to-machine key for `/api/as-torznab-indexer*` and `/api/as-qbittorrent*`. Enforced whenever it is set, independently of interactive login. Also usable as the qBittorrent API password (with any username). |
 | `JWT_SECRET`    | Secret used to sign session JWTs. If unset, a random secret is generated on startup (existing sessions are invalidated on restart).                                      |
+| `AUTH_REQUIRED` | `enabled` (default) or `disabled_for_local`: skip the web UI login for clients on a local network, like *arr's "Disabled for Local Addresses". See below. |
+| `TRUSTED_NETWORKS` | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` gives the real client IP, e.g. `172.29.4.0/22`. Empty: the header is never read. |
 
 ### Behavior matrix
 
@@ -166,6 +168,34 @@ reverse proxy / SSO (e.g. Traefik + Authelia) without a double login — while
 > port is **NOT published to any host** and all access is forced through a
 > trusted authenticating reverse proxy. Do not expose the port directly to a
 > network when interactive login is disabled.
+
+### Skipping the login on the local network
+
+With `AUTH_USERNAME`/`AUTH_PASSWORD` set, `AUTH_REQUIRED=disabled_for_local`
+skips the login page for clients on a local address: loopback, private IPv4
+(`10/8`, `172.16/12`, `192.168/16`), link-local and IPv6 ULA (`fc00::/7`).
+Clients from anywhere else still get the login. Only the web UI, its admin API
+and the WebSocket are affected: `/api/as-*` keeps requiring `API_KEY`.
+
+Mularr decides from the IP that opened the connection. When that IP is in
+`TRUSTED_NETWORKS`, it reads the real client from `X-Forwarded-For` instead
+(the rightmost hop that is not itself trusted). When the client can't be told
+(a trusted proxy that sends no usable hop, or forwarding headers from a peer
+that is not listed), the login is required. Requests a browser makes on behalf
+of another website (`Origin` not matching `Host`) always need the login.
+
+> [!WARNING]
+> - **Behind a reverse proxy, list it in `TRUSTED_NETWORKS`**, and make it
+>   append to `X-Forwarded-For` and keep the original `Host`. Traefik and Caddy
+>   do both by default; nginx needs
+>   `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` and
+>   `proxy_set_header Host $host;`. A proxy that sends no forwarding header at
+>   all looks like a local client, internet traffic included.
+> - Check the debug log (`LOG_LEVEL=debug` logs each client IP and the
+>   decision): with some Docker setups a published port shows the bridge
+>   gateway instead of the real client, which is local too.
+> - As with *arr, an IP-based exemption can't stop DNS rebinding from a
+>   malicious page opened on the LAN. Keep `enabled` if that matters to you.
 
 ---
 

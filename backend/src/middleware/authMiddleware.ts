@@ -70,7 +70,7 @@ export function authenticateRequest(req: IncomingMessage, opts: AuthOptions = {}
 	const authService = container.get(AuthService);
 
 	const active = scope === 'interactive' ? authService.isInteractiveLoginEnabled() : authService.isAuthEnabled();
-	if (!active) {
+	if (!active || (scope === 'interactive' && authService.isLoginExempt(req))) {
 		return { authorized: true };
 	}
 

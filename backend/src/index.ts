@@ -81,6 +81,10 @@ if (authService.isInteractiveLoginEnabled()) {
 	logger.info('Interactive login DISABLED (AUTH_USERNAME/AUTH_PASSWORD not set) — serve only behind a trusted authenticating reverse proxy.');
 }
 logger.info(`API_KEY auth on /api/as-* is ${authService.isApiKeyAuthEnabled() ? 'ENABLED' : 'DISABLED'}.`);
+if (__APP_CONFIG__.auth.required === 'disabled_for_local') {
+	const proxies = __APP_CONFIG__.auth.trustedNetworks.filter((n) => n.trim());
+	logger.info(`Login skipped for local addresses (AUTH_REQUIRED=disabled_for_local); trusted proxies: ${proxies.join(', ') || 'none'}.`);
+}
 
 async function main() {
 	// Initialize Main DB (the mock one is wiped and reseeded on every start)

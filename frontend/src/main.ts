@@ -19,7 +19,7 @@ const mountApp = () => {
 
 (async () => {
 	const authService = inject(AuthApiService);
-	let status = { enabled: false, hasCredentials: false, hasApiKey: false };
+	let status = { enabled: false, hasCredentials: false, hasApiKey: false, loginExempt: false };
 	try {
 		status = await authService.getStatus();
 	} catch {
@@ -27,7 +27,7 @@ const mountApp = () => {
 	}
 
 	// No login configured: the UI is served open (meant for a trusted auth proxy)
-	if (status.hasCredentials && !authService.isLoggedIn()) {
+	if (status.hasCredentials && !status.loginExempt && !authService.isLoggedIn()) {
 		mountRoot(LoginView({ onLogin: mountApp }), document.body);
 	} else {
 		mountApp();
