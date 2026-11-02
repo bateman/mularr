@@ -26,7 +26,7 @@ RUN npm ci
 # Copy source and build
 COPY backend/ ./
 COPY app-manifest.json ../
-RUN npm run build
+RUN npm run build && npm test
 
 # Remove devDependencies from node_modules before copying to production image
 RUN npm prune --omit=dev
