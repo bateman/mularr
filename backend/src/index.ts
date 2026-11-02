@@ -83,7 +83,8 @@ if (authService.isInteractiveLoginEnabled()) {
 logger.info(`API_KEY auth on /api/as-* is ${authService.isApiKeyAuthEnabled() ? 'ENABLED' : 'DISABLED'}.`);
 if (__APP_CONFIG__.auth.required === 'disabled_for_local') {
 	const proxies = __APP_CONFIG__.auth.trustedNetworks.filter((n) => n.trim());
-	logger.info(`Login skipped for local addresses (AUTH_REQUIRED=disabled_for_local); trusted proxies: ${proxies.join(', ') || 'none'}.`);
+	if (!authService.isInteractiveLoginEnabled()) logger.warn('AUTH_REQUIRED=disabled_for_local has no effect: no login is configured.');
+	else logger.info(`Login skipped for local addresses (AUTH_REQUIRED=disabled_for_local); trusted proxies: ${proxies.join(', ') || 'none'}.`);
 }
 
 async function main() {
