@@ -3,7 +3,7 @@ import { container } from '../services/container/ServiceContainer';
 import { eD2kLinkToFakeMagnet, hashToFakeMagnet } from './qbittorrentMappings';
 import { MediaSearchService, MediaSearchResult } from '../services/mediaprovider';
 import { MainDB, type Extension, type IndexerFeedMediaType, type IndexerFeedRecord } from '../services/db/MainDB';
-import { expandApostrophes, filterByEpisode, hoistMovieYear } from '../tools/releaseNameTools';
+import { expandApostrophes, filterByEpisode, filterByFileKind, hoistMovieYear, wantedFilesFor } from '../tools/releaseNameTools';
 import { toImdbId, type ArrApp } from '../services/arrsync/ArrApiClient';
 import { arrSearchProvidersFor, isArrExtensionType, parseArrConfig } from '../services/arrsync/ArrSyncService';
 import { parseEd2kLink } from '../tools/eD2kTools';
@@ -127,7 +127,14 @@ export class IndexerController {
 			try {
 				const results = await this.searchService.searchAndCollect({ query: queryStr, imdbId, providers });
 
-				let list = epFilter ? filterByEpisode(results, epFilter.season, epFilter.ep) : results;
+				// eD2k shares single files, so the .nfo, artwork and subtitles next to a video match its title too.
+				// Dropped before paging, or they would take the places of real releases in the page.
+				const wanted = wantedFilesFor(t, cat);
+				let list = filterByFileKind(results, wanted);
+				if (list.length < results.length) {
+					this.logger.debug(`Dropped ${results.length - list.length} result(s) that are not ${wanted === 'any' ? 'media' : wanted} files`);
+				}
+				if (epFilter) list = filterByEpisode(list, epFilter.season, epFilter.ep);
 
 				// Apply offset and limit
 				const start = parseInt(offset as string) || 0;

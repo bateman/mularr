@@ -1,9 +1,9 @@
 import type { IndexerFeedMediaType } from '../types/IndexerFeedTypes';
 
 /**
- * Helpers to match eD2k release names against what Sonarr/Radarr ask for. Shared by the Torznab
- * controller (episode searches), the *arr wanted sync (see services/arrsync) and the provider feeds
- * (see services/indexerfeed).
+ * Helpers to match eD2k release names against what Sonarr/Radarr/Lidarr ask for. Shared by the Torznab
+ * controller (file kind of every search, episode searches), the *arr wanted sync (see services/arrsync) and the
+ * provider feeds (see services/indexerfeed).
  */
 
 // 0* absorbs zero-padding (S01E07 == S1E7); \s? allows a split SxxEyy.
@@ -41,11 +41,84 @@ export function guessMediaType(name: string): IndexerFeedMediaType {
 }
 
 const VIDEO_EXTENSIONS = new Set(['mkv', 'mp4', 'avi', 'm4v', 'mov', 'wmv', 'ts', 'm2ts', 'mpg', 'mpeg', 'webm', 'flv', 'ogm', 'divx', 'iso']);
+const AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'm4b', 'aac', 'ogg', 'oga', 'opus', 'wma', 'wav', 'ape', 'wv', 'aiff', 'aif', 'mka', 'dsf', 'dff']);
+const ARCHIVE_EXTENSIONS = new Set(['rar', 'zip', '7z', 'tar', 'gz', 'bz2', 'xz']);
+/**
+ * Files that are never what anyone searches for: the sidecars shared next to a video (artwork, .nfo, subtitles,
+ * separate audio tracks, checksums), playlists, and executables (the classic fake "movie.exe" on eD2k). Their names carry the release
+ * title, so they match a search as well as the video itself.
+ */
+const JUNK_EXTENSIONS = new Set([
+	...['nfo', 'txt', 'log', 'url', 'lnk', 'ini', 'db'],
+	...['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tbn', 'ico'],
+	...['srt', 'sub', 'idx', 'ass', 'ssa', 'vtt', 'smi', 'sup', 'mks'],
+	...['ac3', 'eac3', 'dts', 'dtshd'],
+	...['sfv', 'md5', 'sha1', 'sha256', 'par2', 'torrent'],
+	...['m3u', 'm3u8', 'pls', 'cue'],
+	...['exe', 'com', 'bat', 'cmd', 'scr', 'pif', 'vbs', 'msi'],
+]);
 
-/** True when the file name has a video container extension: what the *arr can import, and all the feed offers them. */
-export function isVideoFileName(name: string): boolean {
+export type FileKind = 'video' | 'audio' | 'archive' | 'junk';
+
+/**
+ * What the file name's extension says the file is, or undefined when it has no extension this module knows:
+ * release names such as "Movie.1995.1080p" end in a dot-separated token that is not an extension at all.
+ */
+export function fileKind(name: string): FileKind | undefined {
+	if (!name.includes('.')) return undefined;
 	const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
-	return name.includes('.') && VIDEO_EXTENSIONS.has(ext);
+	if (VIDEO_EXTENSIONS.has(ext)) return 'video';
+	if (AUDIO_EXTENSIONS.has(ext)) return 'audio';
+	if (ARCHIVE_EXTENSIONS.has(ext) || /^r\d{2}$/.test(ext)) return 'archive';
+	if (JUNK_EXTENSIONS.has(ext)) return 'junk';
+	return undefined;
+}
+
+/**
+ * True when the file name has a video container extension: what Sonarr/Radarr import as is. Stricter than
+ * filterByFileKind(…, 'video'), which also keeps archives and names with no known extension.
+ */
+export function isVideoFileName(name: string): boolean {
+	return fileKind(name) === 'video';
+}
+
+/** What a search asks for: video for Sonarr/Radarr, audio for Lidarr, anything but junk when unknown (see wantedFilesFor). */
+export type WantedFiles = 'video' | 'audio' | 'any';
+
+/**
+ * What a Torznab request wants (see WantedFiles): video for a movie or TV search, audio for a music search. A plain
+ * search names no app, but Sonarr sends some of its own as one (anime absolute numbers, specials), so it is told by
+ * its categories (`cat`, e.g. "5000,5070"): all of them movie (2xxx) or TV (5xxx) is video, all audio (3xxx) is audio,
+ * anything else (none, a mix, books...) is any.
+ */
+export function wantedFilesFor(t: unknown, cat: unknown): WantedFiles {
+	if (t === 'music') return 'audio';
+	if (t !== 'search') return 'video';
+	// Express hands a repeated `cat=` over as an array
+	const cats = [cat]
+		.flat()
+		.filter((c): c is string => typeof c === 'string')
+		.flatMap((c) => c.split(','))
+		.map((c) => c.trim())
+		.filter((c) => c !== '')
+		.map((c) => Math.floor(Number(c) / 1000));
+	if (cats.length === 0) return 'any';
+	if (cats.every((c) => c === 2 || c === 5)) return 'video';
+	if (cats.every((c) => c === 3)) return 'audio';
+	return 'any';
+}
+
+/**
+ * Keeps the results whose file can be what the search wants (see WantedFiles). A name with no known extension is
+ * kept: nothing says it is the wrong kind. Archives are kept by every search: albums on eD2k are often shared only
+ * as one archive, and an unpacker next to the *arr (e.g. Unpackerr) makes them importable.
+ */
+export function filterByFileKind<T extends { name: string }>(results: T[], wanted: WantedFiles): T[] {
+	return results.filter((r) => {
+		const kind = fileKind(r.name);
+		if (kind === undefined || kind === 'archive') return true;
+		return wanted === 'any' ? kind !== 'junk' : kind === wanted;
+	});
 }
 
 /** True when the release name carries the given year as a standalone token (e.g. "Movie (1995)", "Movie.1995.1080p"). */
