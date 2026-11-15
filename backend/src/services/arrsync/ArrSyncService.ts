@@ -4,6 +4,7 @@ import { MainDB, type Extension, type IndexerFeedRecord } from '../db/MainDB';
 import { MediaSearchService, SEARCH_PROVIDER_IDS, type MediaSearchResult, type SearchProviderId } from '../mediaprovider';
 import type { ArrSyncExtensionStatus, ArrSyncStatusResponse, WantedItem, WantedListResponse } from '../../types/IndexerFeedTypes';
 import { LoggerFactory } from '../logging/Logger';
+import { filterByFileKind } from '../../tools/releaseNameTools';
 import type { ArrApiClient, ArrApp, SearchJob } from './ArrApiClient';
 import { SonarrApiClient } from './SonarrApiClient';
 import { RadarrApiClient } from './RadarrApiClient';
@@ -167,8 +168,26 @@ export class ArrSyncService {
 	start(): void {
 		this.logger.info('Starting *arr wanted sync...');
 		this.startedAt = Date.now();
+		this.dropNonVideoFeedItems();
 		this.firstTickId = setTimeout(() => void this.tick(), FIRST_TICK_DELAY_MS);
 		this.tickId = setInterval(() => void this.tick(), TICK_MS);
+	}
+
+	/**
+	 * The feed holds TV and movie releases only, but the wanted sync and the Hispashare feed used to store the
+	 * sidecars of a video (.nfo, artwork, subtitles) as releases too. New items are filtered as they come in; this
+	 * removes the ones stored before, which retention alone would keep serving for up to FEED_RETENTION_DAYS.
+	 */
+	private dropNonVideoFeedItems(): void {
+		try {
+			const items = this.db.getIndexerFeedNames();
+			const kept = new Set(filterByFileKind(items, 'video').map((item) => item.hash));
+			const removed = this.db.deleteIndexerFeedItems(items.filter((item) => !kept.has(item.hash)).map((item) => item.hash));
+			if (removed > 0) this.logger.info(`Removed ${removed} feed item(s) that are not video files`);
+		} catch (error: any) {
+			// A cleanup only: the sync starts all the same
+			this.logger.warn(`Could not remove the feed items that are not video files: ${error?.message ?? error}`);
+		}
 	}
 
 	stop(): void {
@@ -366,7 +385,8 @@ export class ArrSyncService {
 			const jobKey = this.jobKey(ext, job);
 			try {
 				const results = await this.searchService.searchAndCollect({ query: job.query, imdbId: job.imdbId, providers: config.searchProviders });
-				const hits = results
+				// Sidecars of a video (.nfo, artwork, subtitles) match the job too and can outrank it by sources
+				const hits = filterByFileKind(results, 'video')
 					.filter((r) => r.hash && job.matches(r))
 					.sort((a, b) => (b.sourceCount ?? 0) - (a.sourceCount ?? 0))
 					.slice(0, MAX_RESULTS_PER_QUERY);

@@ -2,7 +2,7 @@ import { container } from '../../container/ServiceContainer';
 import type { HispashareTitle } from '../../hispashare/HispashareApiClient';
 import { HISPASHARE_FEED_DEFAULT_INTERVAL_MINUTES, HispashareService } from '../../hispashare/HispashareService';
 import { hispashareSearchResults } from '../../mediaprovider/adapters/HispashareMediaProvider';
-import { guessMediaType } from '../../../tools/releaseNameTools';
+import { filterByFileKind, guessMediaType } from '../../../tools/releaseNameTools';
 import type { IndexerFeedMediaType } from '../../../types/IndexerFeedTypes';
 import { FEED_RELEASE_MAX_AGE_MS, type FeedRelease, type IFeedProvider } from '../types';
 import { LoggerFactory } from '../../logging/Logger';
@@ -76,7 +76,8 @@ export class HispashareFeedProvider implements IFeedProvider {
 			// A title is "updated" when a link changes; only its releases that became available recently are news
 			const recent = (title.releases ?? []).filter((r) => Date.parse(r.date) >= releaseFloor);
 			if (recent.length === 0) continue;
-			for (const result of hispashareSearchResults([{ ...title, releases: recent }])) {
+			// The feed serves Sonarr/Radarr only, so sidecars of a release (.nfo, subtitles) are left out
+			for (const result of filterByFileKind(hispashareSearchResults([{ ...title, releases: recent }]), 'video')) {
 				releases.push({ result, mediaType: mediaType ?? guessMediaType(result.name) });
 			}
 		}

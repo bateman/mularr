@@ -496,6 +496,18 @@ export class MainDB {
 		return this.db.prepare<string, IndexerFeedRecord>('SELECT * FROM indexer_feed WHERE hash = ?').get(hash.toLowerCase());
 	}
 
+	/** Hash and name of every feed item, for checks that need only the name. */
+	public getIndexerFeedNames(): { hash: string; name: string }[] {
+		return this.db.prepare<[], { hash: string; name: string }>('SELECT hash, name FROM indexer_feed').all();
+	}
+
+	/** Deletes the items with the given hashes in one transaction. Returns how many were removed. */
+	public deleteIndexerFeedItems(hashes: readonly string[]): number {
+		const stmt = this.db.prepare('DELETE FROM indexer_feed WHERE hash = ?');
+		const deleteAll = this.db.transaction((list: readonly string[]) => list.reduce((n, hash) => n + stmt.run(hash.toLowerCase()).changes, 0));
+		return deleteAll(hashes);
+	}
+
 	public deleteIndexerFeedItem(hash: string): boolean {
 		return this.db.prepare('DELETE FROM indexer_feed WHERE hash = ?').run(hash.toLowerCase()).changes > 0;
 	}
