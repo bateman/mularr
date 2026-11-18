@@ -27,6 +27,7 @@ export class AuthService {
 	private readonly apiKey = __APP_CONFIG__.auth.apiKey;
 	private readonly localBypass = __APP_CONFIG__.auth.required === 'disabled_for_local';
 	private readonly trustedNetworks = parseNetworks(__APP_CONFIG__.auth.trustedNetworks);
+	private readonly trustCgnat = __APP_CONFIG__.auth.trustCgnat;
 	private readonly jwtSecret: string;
 
 	constructor(dataDir: string) {
@@ -96,7 +97,7 @@ export class AuthService {
 		if (!this.localBypass) return false;
 		const ip = resolveClientIp(req.socket.remoteAddress, req.headers, this.trustedNetworks);
 		const crossSite = isCrossSite(req.headers);
-		const exempt = !!ip && isLocalAddress(ip) && !crossSite;
+		const exempt = !!ip && isLocalAddress(ip, this.trustCgnat) && !crossSite;
 		const peer = normalizeIp(req.socket.remoteAddress ?? '');
 		this.logger.debug(`Client ${ip ?? 'unknown'} (peer ${peer}${crossSite ? ', cross-site' : ''}): login ${exempt ? 'skipped (local)' : 'required'}`);
 		return exempt;

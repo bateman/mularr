@@ -6,9 +6,29 @@ test('local addresses', () => {
 	for (const ip of ['127.0.0.1', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.10', '::1', 'fd00::1', 'fe80::1']) {
 		assert.equal(isLocalAddress(ip), true, ip);
 	}
-	for (const ip of ['8.8.8.8', '172.32.0.1', '2001:db8::1', 'not-an-ip', '']) {
+	for (const ip of ['8.8.8.8', '172.32.0.1', '2001:db8::1', 'not-an-ip', '', '100.64.0.1', '100.101.102.103']) {
 		assert.equal(isLocalAddress(ip), false, ip);
 	}
+});
+
+test('CGNAT (Tailscale) addresses are local only when trusted', () => {
+	for (const ip of ['100.64.0.0', '100.101.102.103', '100.127.255.255']) {
+		assert.equal(isLocalAddress(ip, true), true, ip);
+		assert.equal(isLocalAddress(ip, false), false, ip);
+	}
+	// Just outside 100.64.0.0/10, and public addresses, stay non-local
+	for (const ip of ['100.63.255.255', '100.128.0.0', '8.8.8.8', 'not-an-ip']) {
+		assert.equal(isLocalAddress(ip, true), false, ip);
+	}
+	// The private ranges don't depend on the flag
+	assert.equal(isLocalAddress('192.168.1.10', true), true);
+	// Tailscale's IPv6 addresses (fd7a:115c:a1e0::/48) are ULA, local either way
+	assert.equal(isLocalAddress('fd7a:115c:a1e0::1', false), true);
+	// Behind a trusted proxy, the resolved client is what gets checked
+	const trusted = parseNetworks(['172.29.4.0/22']);
+	const ip = resolveClientIp('172.29.4.18', { 'x-forwarded-for': '100.101.102.103' }, trusted);
+	assert.equal(ip, '100.101.102.103');
+	assert.equal(isLocalAddress(ip!, true), true);
 });
 
 test('normalizes IPv4-mapped IPv6 and zone ids', () => {

@@ -140,6 +140,7 @@ qBittorrent-compatible client. The two are controlled independently:
 | `JWT_SECRET`    | Secret used to sign session JWTs. If unset, a random secret is generated on startup (existing sessions are invalidated on restart).                                      |
 | `AUTH_REQUIRED` | `enabled` (default) or `disabled_for_local`: skip the web UI login for clients on a local network, like *arr's "Disabled for Local Addresses". See below. |
 | `TRUSTED_NETWORKS` | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` gives the real client IP, e.g. `172.29.4.0/22`. Empty: the header is never read. |
+| `TRUST_CGNAT_IP_ADDRESSES` | `true`: with `disabled_for_local`, also skip the login for `100.64.0.0/10`, the range Tailscale gives its devices (like *arr's `TrustCgnatIpAddresses`). Default off. See below. |
 
 ### Behavior matrix
 
@@ -176,6 +177,15 @@ skips the login page for clients on a local address: loopback, private IPv4
 (`10/8`, `172.16/12`, `192.168/16`), link-local and IPv6 ULA (`fc00::/7`).
 Clients from anywhere else still get the login. Only the web UI, its admin API
 and the WebSocket are affected: `/api/as-*` keeps requiring `API_KEY`.
+
+**Tailscale.** A tailnet device reaching Mularr with its own IPv4 address comes
+from `100.64.0.0/10` (shared address space, RFC 6598), which is not local, so
+it gets the login. `TRUST_CGNAT_IP_ADDRESSES=true` counts that range as local
+too, as `TrustCgnatIpAddresses` does in *arr. Turn it on only if nothing but
+your tailnet can reach Mularr from that range: an ISP's carrier-grade NAT uses
+it as well. Tailscale's IPv6 addresses are ULA and count as local either way.
+Whether a tailnet client shows up with its `100.x` address depends on the
+route: a subnet router that masquerades hands Mularr its own address instead.
 
 Mularr decides from the IP that opened the connection. When that IP is in
 `TRUSTED_NETWORKS`, it reads the real client from `X-Forwarded-For` instead

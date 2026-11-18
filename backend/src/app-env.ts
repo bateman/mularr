@@ -51,6 +51,8 @@ export interface AppConfig {
 		required: (typeof AUTH_REQUIRED_MODES)[number];
 		/** Reverse proxies (IPs/CIDRs) whose X-Forwarded-For gives the real client IP. */
 		trustedNetworks: string[];
+		/** With `disabled_for_local`, also count 100.64.0.0/10 (CGNAT, Tailscale) as local, like *arr's TrustCgnatIpAddresses. */
+		trustCgnat: boolean;
 	};
 	/** Telegram bot notifications; undefined when TELEGRAM_BOT_TOKEN is not set. */
 	telegramBot?: {
@@ -195,6 +197,7 @@ function loadConfig(): AppConfig {
 			jwtSecret: envString('JWT_SECRET'),
 			required: envEnum('AUTH_REQUIRED', AUTH_REQUIRED_MODES, 'enabled'),
 			trustedNetworks: (envString('TRUSTED_NETWORKS') ?? '').split(','),
+			trustCgnat: envBool('TRUST_CGNAT_IP_ADDRESSES'),
 		},
 		telegramBot: telegramBotToken ? { token: telegramBotToken, chatId: envString('TELEGRAM_CHAT_ID'), topicId: envInt('TELEGRAM_TOPIC_ID') } : undefined,
 		seeding: {
