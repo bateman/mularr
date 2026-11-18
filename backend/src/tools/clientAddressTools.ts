@@ -3,6 +3,9 @@ import net, { BlockList } from 'net';
 
 // Loopback, private IPv4, link-local, IPv6 ULA
 const LOCAL_NETWORKS = ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', '::1/128', 'fc00::/7', 'fe80::/10'];
+// Shared address space (RFC 6598): carrier-grade NAT, and the IPv4 addresses Tailscale gives its devices.
+// Local only with TRUST_CGNAT_IP_ADDRESSES=true, like *arr's TrustCgnatIpAddresses: on an ISP's CGNAT it is not your network.
+const CGNAT_NETWORKS = ['100.64.0.0/10'];
 
 /** Strips the IPv4-mapped prefix (`::ffff:1.2.3.4`) and an IPv6 zone id (`fe80::1%eth0`). */
 export function normalizeIp(ip: string): string {
@@ -39,9 +42,11 @@ export function inNetworks(list: BlockList, ip: string): boolean {
 }
 
 const localNetworks = parseNetworks(LOCAL_NETWORKS);
+const cgnatNetworks = parseNetworks(CGNAT_NETWORKS);
 
-export function isLocalAddress(ip: string): boolean {
-	return inNetworks(localNetworks, ip);
+/** `trustCgnat` also counts 100.64.0.0/10 as local (TRUST_CGNAT_IP_ADDRESSES). */
+export function isLocalAddress(ip: string, trustCgnat = false): boolean {
+	return inNetworks(localNetworks, ip) || (trustCgnat && inNetworks(cgnatNetworks, ip));
 }
 
 /**
