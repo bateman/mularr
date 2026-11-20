@@ -128,7 +128,11 @@ export function authenticateRequest(req: IncomingMessage, opts: AuthOptions = {}
 	return { authorized: false, clearSid };
 }
 
-export function createAuthMiddleware(opts: AuthOptions = {}) {
+const reject401 = (res: Response): void => {
+	res.status(401).json({ error: 'Unauthorized' });
+};
+
+export function createAuthMiddleware(opts: AuthOptions = {}, reject: (res: Response) => void = reject401) {
 	return function authMiddleware(req: Request, res: Response, next: NextFunction): void {
 		const outcome = authenticateRequest(req, opts);
 		const authService = container.get(AuthService);
@@ -148,12 +152,22 @@ export function createAuthMiddleware(opts: AuthOptions = {}) {
 			`Unauthorized request to ${req.method} ${req.path} from ${req.socket.remoteAddress} (credentials presented: ${describePresentedCredentials(req)}; session allowed: ${opts.allowSession !== false})`
 		);
 
-		res.status(401).json({ error: 'Unauthorized' });
+		reject(res);
 	};
 }
 
-// qBit-compat API: accepts the session cookie/JWT
+// Accepts the session cookie/JWT; rejects with 401
 export const authMiddleware = createAuthMiddleware();
+
+/**
+ * qBit-compat API: same checks as `authMiddleware`, but rejects like qBittorrent does: `403 Forbidden`.
+ * Sonarr/Radarr only drop their cached SID and log in again when the qBittorrent API
+ * answers 403; on a 401 they keep retrying with the stale cookie forever. That happens
+ * whenever a credentials-based session expires (7 days) or the JWT secret changes.
+ */
+export const qbittorrentAuthMiddleware = createAuthMiddleware({}, (res) => {
+	res.status(403).send('Forbidden');
+});
 
 // API-key-only — rejects the session cookie/JWT. Used for the Torznab indexer.
 export const apiKeyOnlyAuthMiddleware = createAuthMiddleware({ allowSession: false });
