@@ -1,4 +1,5 @@
 import type { IndexerFeedMediaType } from '../types/IndexerFeedTypes';
+import { torznabCategories } from './torznabTools';
 
 /**
  * Helpers to match eD2k release names against what Sonarr/Radarr/Lidarr ask for. Shared by the Torznab
@@ -94,14 +95,7 @@ export type WantedFiles = 'video' | 'audio' | 'any';
 export function wantedFilesFor(t: unknown, cat: unknown): WantedFiles {
 	if (t === 'music') return 'audio';
 	if (t !== 'search') return 'video';
-	// Express hands a repeated `cat=` over as an array
-	const cats = [cat]
-		.flat()
-		.filter((c): c is string => typeof c === 'string')
-		.flatMap((c) => c.split(','))
-		.map((c) => c.trim())
-		.filter((c) => c !== '')
-		.map((c) => Math.floor(Number(c) / 1000));
+	const cats = torznabCategories(cat).map((c) => Math.floor(Number(c) / 1000));
 	if (cats.length === 0) return 'any';
 	if (cats.every((c) => c === 2 || c === 5)) return 'video';
 	if (cats.every((c) => c === 3)) return 'audio';
