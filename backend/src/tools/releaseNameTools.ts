@@ -1,4 +1,5 @@
 import type { IndexerFeedMediaType } from '../types/IndexerFeedTypes';
+import { torznabCategories } from './torznabTools';
 
 /**
  * Helpers to match eD2k release names against what Sonarr/Radarr/Lidarr ask for. Shared by the Torznab
@@ -89,19 +90,13 @@ export type WantedFiles = 'video' | 'audio' | 'any';
  * What a Torznab request wants (see WantedFiles): video for a movie or TV search, audio for a music search. A plain
  * search names no app, but Sonarr sends some of its own as one (anime absolute numbers, specials), so it is told by
  * its categories (`cat`, e.g. "5000,5070"): all of them movie (2xxx) or TV (5xxx) is video, all audio (3xxx) is audio,
- * anything else (none, a mix, books...) is any.
+ * anything else (none, a mix, books...) is any. The Torznab controller passes the action already read from the
+ * categories (see torznabAction), so the plain searches that reach this from there have none or mixed ones.
  */
 export function wantedFilesFor(t: unknown, cat: unknown): WantedFiles {
 	if (t === 'music') return 'audio';
 	if (t !== 'search') return 'video';
-	// Express hands a repeated `cat=` over as an array
-	const cats = [cat]
-		.flat()
-		.filter((c): c is string => typeof c === 'string')
-		.flatMap((c) => c.split(','))
-		.map((c) => c.trim())
-		.filter((c) => c !== '')
-		.map((c) => Math.floor(Number(c) / 1000));
+	const cats = torznabCategories(cat).map((c) => Math.floor(Number(c) / 1000));
 	if (cats.length === 0) return 'any';
 	if (cats.every((c) => c === 2 || c === 5)) return 'video';
 	if (cats.every((c) => c === 3)) return 'audio';

@@ -7,6 +7,7 @@ import { expandApostrophes, filterByEpisode, filterByFileKind, hoistMovieYear, w
 import { toImdbId, type ArrApp } from '../services/arrsync/ArrApiClient';
 import { arrSearchProvidersFor, isArrExtensionType, parseArrConfig } from '../services/arrsync/ArrSyncService';
 import { parseEd2kLink } from '../tools/eD2kTools';
+import { resultCategories, torznabAction, type TorznabSearchAction } from '../tools/torznabTools';
 import { LoggerFactory } from '../services/logging/Logger';
 
 /** What renderRss needs from a release. pubDate defaults to now (live search results). */
@@ -77,6 +78,9 @@ const EMPTY_FEED_PLACEHOLDER: MediaSearchResult[] = [
  *
  * Searches reach the providers selected in the Sonarr/Radarr extensions of the calling app, see selectedProvidersFor.
  * The optional `/ext/<id>` path (see routes/indexerRoutes) pins the request to one extension instead.
+ *
+ * The calling app is told by the action, or by the categories of a plain search (see torznabAction): Prowlarr sends
+ * every request with no id parameter as a plain search, so behind it they are all that is left.
  */
 export class IndexerController {
 	private readonly logger = LoggerFactory.create(this);
@@ -99,12 +103,15 @@ export class IndexerController {
 		}
 
 		if (t === 'search' || t === 'tvsearch' || t === 'movie' || t === 'music') {
+			const action = torznabAction(t, cat);
+			if (action !== t) this.logger.debug(`Plain search with categories ${cat} read as ${action}`);
+
 			// Music search (Lidarr): build the query from the structured
 			// artist/album params (Lidarr prefers them over free-text `q`).
 			// Values are trimmed and deduped case-insensitively, since
 			// self-titled albums arrive as artist == album.
 			let musicQuery = '';
-			if (t === 'music') {
+			if (action === 'music') {
 				const parts = [artist, album]
 					.flat()
 					.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
@@ -117,7 +124,7 @@ export class IndexerController {
 			if (!q && !imdbid && !musicQuery) {
 				const start = parseInt(offset as string) || 0;
 				const size = parseInt(limit as string) || 100;
-				return this.handleRssSync(res, start, size, t, cat as string);
+				return this.handleRssSync(res, start, size, action, cat);
 			}
 
 			// Releases often drop apostrophes (e.g. "Widow's Bay" -> "Widows Bay").
@@ -127,24 +134,24 @@ export class IndexerController {
 
 			// Lidarr sends a literal empty `q=` alongside artist/album —
 			// fall back to the structured params whenever q is blank.
-			if (t === 'music' && !queryStr.trim()) {
+			if (action === 'music' && !queryStr.trim()) {
 				queryStr = expandApostrophes(musicQuery);
 			}
 
 			// What the request can search with, narrowed to what the calling app selected
-			const selected = this.selectedProvidersFor(t, urlExtension.extension);
+			const selected = this.selectedProvidersFor(action, urlExtension.extension);
 			const providers = restrictProviders(this.getSearchProvidersFor(queryStr, imdbId), selected);
 			if (providers?.length === 0) {
 				this.logger.debug(
 					`No providers to search with (q "${queryStr}", IMDb id ${imdbId ?? 'none'}, selected: ${selected ? selected.join(', ') || 'none' : 'all'}); returning empty valid RSS`
 				);
-				return this.renderRss(res, [], cat as string, t);
+				return this.renderRss(res, [], cat, action);
 			}
 
 			// tvsearch: search by title alone, then filter names locally by
 			// season/ep (see filterByEpisode).
 			let epFilter: { season: number; ep: number } | undefined;
-			if (t === 'tvsearch' && typeof season === 'string' && typeof ep === 'string' && /^\d+$/.test(season) && /^\d+$/.test(ep)) {
+			if (action === 'tvsearch' && typeof season === 'string' && typeof ep === 'string' && /^\d+$/.test(season) && /^\d+$/.test(ep)) {
 				epFilter = { season: parseInt(season, 10), ep: parseInt(ep, 10) };
 			}
 
@@ -153,7 +160,7 @@ export class IndexerController {
 
 				// eD2k shares single files, so the .nfo, artwork and subtitles next to a video match its title too.
 				// Dropped before paging, or they would take the places of real releases in the page.
-				const wanted = wantedFilesFor(t, cat);
+				const wanted = wantedFilesFor(action, cat);
 				let list = filterByFileKind(results, wanted);
 				if (list.length < results.length) {
 					this.logger.debug(`Dropped ${results.length - list.length} result(s) that are not ${wanted === 'any' ? 'media' : wanted} files`);
@@ -169,7 +176,7 @@ export class IndexerController {
 					`Returning ${list.length} results (offset: ${start}, limit: ${size}) for ${queryStr ? `query "${queryStr}"` : `IMDb id ${imdbId}`}`
 				);
 
-				return this.renderRss(res, list, cat as string, t);
+				return this.renderRss(res, list, cat, action);
 			} catch (e: any) {
 				this.logger.error('Indexer Search Error:', e);
 				return res.status(500).send(e.message);
@@ -179,7 +186,7 @@ export class IndexerController {
 		res.status(400).send('Unknown action');
 	};
 
-	private handleRssSync(res: Response, start: number, size: number, t?: string, cat?: string) {
+	private handleRssSync(res: Response, start: number, size: number, t: TorznabSearchAction, cat: unknown) {
 		// tvsearch/movie map to one media type; a plain search gets everything; music has no feed
 		const mediaType: IndexerFeedMediaType | undefined = t === 'tvsearch' ? 'tv' : t === 'movie' ? 'movie' : undefined;
 		const total = t === 'music' ? 0 : this.db.countIndexerFeed({ mediaType });
@@ -210,9 +217,10 @@ export class IndexerController {
 	/**
 	 * Providers the calling app's searches are limited to: the ones selected in its Sonarr/Radarr extensions, the
 	 * same ones their wanted sync uses (see arrSearchProvidersFor), so a network whose results are too unreliable
-	 * for unattended downloads can be kept out of the automatic searches. The app is told by the action: with the
-	 * caps advertised, Sonarr searches with tvsearch and Radarr with movie. search and music (Lidarr, Prowlarr's
-	 * manual search) name no app and reach every provider, as do the apps without a selection (undefined).
+	 * for unattended downloads can be kept out of the automatic searches. The app is told by the action (see
+	 * torznabAction): with the caps advertised, Sonarr searches with tvsearch and Radarr with movie, and behind
+	 * Prowlarr their categories say the same. music (Lidarr) and a search with no categories or mixed ones
+	 * (Prowlarr's manual search) name no app and reach every provider, as do the apps without a selection (undefined).
 	 *
 	 * With several instances of one app, the plain path cannot tell them apart and unites their selections; an
 	 * instance that uses its extension's own path (`urlExtension`, see resolveUrlExtension) gets exactly that
@@ -278,12 +286,14 @@ export class IndexerController {
 	}
 
 	/**
-	 * The name the *arr should read for a release. Only a Radarr movie request (`t=movie`) is read as a movie,
+	 * The name the *arr should read for a release. Only a Radarr movie request (`t=movie`, or a plain search with
+	 * movie categories, see torznabAction) is read as a movie,
 	 * and it gets its year moved in front of whatever the uploader put between it and the title
 	 * (hoistMovieYear) plus, when the file name carries no year at all, the title and year the catalogue knows
 	 * (withMovieYear). Sonarr matches a series by its season/episode marker, and moving the year out of
 	 * "Perdidos (Lost) (2004) 1x01.mkv" (to "Perdidos (2004) (Lost) 1x01.mkv") leaves it with a name it no
-	 * longer reads; a plain search is read by all three apps at once. Everything else is published as is.
+	 * longer reads; a plain search with no categories or mixed ones is read by all three apps at once. Everything else
+	 * is published as is.
 	 */
 	private publishTitle(item: RssItem, t?: string): string {
 		if (t !== 'movie' || item.type === 'series') return item.name;
@@ -301,14 +311,18 @@ export class IndexerController {
 	}
 
 	/**
-	 * `t` is the Torznab action of the request, which tells publishTitle whose parser will read the names;
-	 * `total` is the size of the whole result set when `results` is one page of it (feed paging).
+	 * `t` is the Torznab action of the request (see torznabAction), which tells publishTitle whose parser will read
+	 * the names; `cat` gives the categories written on every result (see resultCategories); `total` is the size of
+	 * the whole result set when `results` is one page of it (feed paging).
 	 */
-	private renderRss(res: Response, results: RssItem[], requestedCat?: string, t?: string, total: number = results.length) {
+	private renderRss(res: Response, results: RssItem[], cat: unknown, t: TorznabSearchAction, total: number = results.length) {
 		res.header('Content-Type', 'application/xml');
 
-		const category = requestedCat || '2000';
-		const offset = res.req.query.offset || '0';
+		const categories = resultCategories(t, cat);
+		const categoryElements = categories.map((c) => `<category>${c}</category>`).join('\n      ');
+		const categoryAttributes = categories.map((c) => `<torznab:attr name="category" value="${c}" />`).join('\n      ');
+		// Parsed, not echoed: the raw value would be written into the XML as is
+		const offset = parseInt(String(res.req.query.offset ?? ''), 10) || 0;
 
 		let itemsXml = '';
 		for (const item of results) {
@@ -326,7 +340,7 @@ export class IndexerController {
       <title>${title}</title>
       <guid isPermaLink="false">${hash}</guid>
       <link>${downloadUrl}</link>
-      <category>${category}</category>
+      ${categoryElements}
       <pubDate>${(item.pubDate ?? new Date()).toUTCString()}</pubDate>
       <size>${item.size}</size>
       <enclosure url="${downloadUrl}" length="${item.size}" type="application/x-bittorrent" />
@@ -334,7 +348,7 @@ export class IndexerController {
       <torznab:attr name="peers" value="${item.sourceCount || 0}" />
       <torznab:attr name="infohash" value="${hash}" />
       ${this.imdbAttribute(item.imdbId)}
-      <torznab:attr name="category" value="${category}" />
+      ${categoryAttributes}
       <torznab:attr name="downloadvolumefactor" value="1" />
       <torznab:attr name="uploadvolumefactor" value="1" />
     </item>`;

@@ -110,6 +110,14 @@ To configure as download client use the following settings:
 - **Type**: qBittorrent
 - **URL Base**: `/api/as-qbittorrent`
 
+### Through Prowlarr
+
+The indexer can also be added once in Prowlarr, as a **Generic Torznab** indexer (URL `http://<mularr host>:8940`, API Path `/api/as-torznab-indexer`, API Key `API_KEY`), which then syncs it to Sonarr, Radarr and Lidarr. Delete the Torznab indexer added in each app first, or every search reaches Mularr twice. Prowlarr does not sync download clients: the qBittorrent client above is still added in each app. When an app has another torrent client too, set the synced indexer's **Download Client** to Mularr; Prowlarr keeps that setting on later syncs.
+
+Prowlarr sends every request without an id parameter as a plain `search`, whatever app it comes from, so Mularr tells the apps apart by the categories they ask for: TV, movies or audio.
+
+Keep the plain API Path in Prowlarr. An extension's own path (`/api/as-torznab-indexer/ext/<id>`) applies that extension's provider selection to every request, so behind one Prowlarr indexer it would reach Radarr and Lidarr too. To give several instances of an app their own selections, add one Generic Torznab indexer per extension path and tag each to its app.
+
 ### Automatic downloads & RSS sync
 
 eD2k has no RSS feed for Sonarr/Radarr to poll, so Mularr builds one. In **Extensions**, add a **Sonarr** or **Radarr** extension with the instance URL and API key: Mularr periodically searches for the titles in its **Wanted > Missing** list and publishes the matches in its Torznab feed.
