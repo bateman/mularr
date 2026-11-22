@@ -110,6 +110,8 @@ To configure as download client use the following settings:
 - **Type**: qBittorrent
 - **URL Base**: `/api/as-qbittorrent`
 
+An eD2k search takes 10-15 s. The indexer hands out its results again for 3 minutes to requests for the same search: the next pages of a long result list, and Sonarr's next episodes of the same series. A search that found nothing is not kept, so asking again runs it again.
+
 ### Through Prowlarr
 
 The indexer can also be added once in Prowlarr, as a **Generic Torznab** indexer (URL `http://<mularr host>:8940`, API Path `/api/as-torznab-indexer`, API Key `API_KEY`), which then syncs it to Sonarr, Radarr and Lidarr. Delete the Torznab indexer added in each app first, or every search reaches Mularr twice. Prowlarr does not sync download clients: the qBittorrent client above is still added in each app. When an app has another torrent client too, set the synced indexer's **Download Client** to Mularr; Prowlarr keeps that setting on later syncs.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resultCategories, torznabAction, torznabCategories } from './torznabTools';
+import { isTorznabSearchAction, resultCategories, torznabAction, torznabCategories } from './torznabTools';
 
 test('the categories of a request are its numeric ids, one each', () => {
 	assert.deepEqual(torznabCategories('5000,5030,5040'), ['5000', '5030', '5040']);
@@ -42,4 +42,9 @@ test('a request with no categories gets the top category of its action', () => {
 	assert.deepEqual(resultCategories('movie', ''), ['2000']);
 	assert.deepEqual(resultCategories('music', undefined), ['3000']);
 	assert.deepEqual(resultCategories('search', undefined), ['2000']);
+});
+
+test('every action but caps is a search action', () => {
+	for (const t of ['search', 'tvsearch', 'movie', 'music']) assert.equal(isTorznabSearchAction(t), true, t);
+	for (const t of ['caps', 'details', '', undefined, ['search'], { t: 'search' }]) assert.equal(isTorznabSearchAction(t), false, String(t));
 });

@@ -1,6 +1,13 @@
 /** The Torznab search actions Mularr answers (`t=`), caps aside. */
 export type TorznabSearchAction = 'search' | 'tvsearch' | 'movie' | 'music';
 
+const SEARCH_ACTIONS: readonly unknown[] = ['search', 'tvsearch', 'movie', 'music'] satisfies TorznabSearchAction[];
+
+/** True for a `t` answered with a search or an RSS sync: every action Mularr knows but caps. */
+export function isTorznabSearchAction(t: unknown): t is TorznabSearchAction {
+	return SEARCH_ACTIONS.includes(t);
+}
+
 /**
  * The categories of a Torznab request (`cat`): a comma list ("5000,5030,5040"), or several `cat=` that Express hands
  * over as an array. Only numeric ids are kept, trimmed and without leading zeros ("05000" is written back as 5000,
