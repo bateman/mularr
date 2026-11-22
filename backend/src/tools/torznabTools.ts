@@ -3,7 +3,8 @@ export type TorznabSearchAction = 'search' | 'tvsearch' | 'movie' | 'music';
 
 /**
  * The categories of a Torznab request (`cat`): a comma list ("5000,5030,5040"), or several `cat=` that Express hands
- * over as an array. Only numeric ids are kept, trimmed, in the order given and without repeats.
+ * over as an array. Only numeric ids are kept, trimmed and without leading zeros ("05000" is written back as 5000,
+ * which the caps know), in the order given and without repeats.
  */
 export function torznabCategories(cat: unknown): string[] {
 	const ids = [cat]
@@ -11,7 +12,8 @@ export function torznabCategories(cat: unknown): string[] {
 		.filter((c): c is string => typeof c === 'string')
 		.flatMap((c) => c.split(','))
 		.map((c) => c.trim())
-		.filter((c) => /^\d+$/.test(c));
+		.filter((c) => /^\d+$/.test(c))
+		.map((c) => String(Number(c)));
 	return [...new Set(ids)];
 }
 

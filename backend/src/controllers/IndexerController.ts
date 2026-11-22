@@ -292,7 +292,8 @@ export class IndexerController {
 	 * (hoistMovieYear) plus, when the file name carries no year at all, the title and year the catalogue knows
 	 * (withMovieYear). Sonarr matches a series by its season/episode marker, and moving the year out of
 	 * "Perdidos (Lost) (2004) 1x01.mkv" (to "Perdidos (2004) (Lost) 1x01.mkv") leaves it with a name it no
-	 * longer reads; a plain search is read by all three apps at once. Everything else is published as is.
+	 * longer reads; a plain search with no categories or mixed ones is read by all three apps at once. Everything else
+	 * is published as is.
 	 */
 	private publishTitle(item: RssItem, t?: string): string {
 		if (t !== 'movie' || item.type === 'series') return item.name;
@@ -320,7 +321,8 @@ export class IndexerController {
 		const categories = resultCategories(t, cat);
 		const categoryElements = categories.map((c) => `<category>${c}</category>`).join('\n      ');
 		const categoryAttributes = categories.map((c) => `<torznab:attr name="category" value="${c}" />`).join('\n      ');
-		const offset = res.req.query.offset || '0';
+		// Parsed, not echoed: the raw value would be written into the XML as is
+		const offset = parseInt(String(res.req.query.offset ?? ''), 10) || 0;
 
 		let itemsXml = '';
 		for (const item of results) {

@@ -90,7 +90,8 @@ export type WantedFiles = 'video' | 'audio' | 'any';
  * What a Torznab request wants (see WantedFiles): video for a movie or TV search, audio for a music search. A plain
  * search names no app, but Sonarr sends some of its own as one (anime absolute numbers, specials), so it is told by
  * its categories (`cat`, e.g. "5000,5070"): all of them movie (2xxx) or TV (5xxx) is video, all audio (3xxx) is audio,
- * anything else (none, a mix, books...) is any.
+ * anything else (none, a mix, books...) is any. The Torznab controller passes the action already read from the
+ * categories (see torznabAction), so the plain searches that reach this from there have none or mixed ones.
  */
 export function wantedFilesFor(t: unknown, cat: unknown): WantedFiles {
 	if (t === 'music') return 'audio';

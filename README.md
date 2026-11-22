@@ -116,6 +116,8 @@ The indexer can also be added once in Prowlarr, as a **Generic Torznab** indexer
 
 Prowlarr sends every request without an id parameter as a plain `search`, whatever app it comes from, so Mularr tells the apps apart by the categories they ask for: TV, movies or audio.
 
+Keep the plain API Path in Prowlarr. An extension's own path (`/api/as-torznab-indexer/ext/<id>`) applies that extension's provider selection to every request, so behind one Prowlarr indexer it would reach Radarr and Lidarr too. To give several instances of an app their own selections, add one Generic Torznab indexer per extension path and tag each to its app.
+
 ### Automatic downloads & RSS sync
 
 eD2k has no RSS feed for Sonarr/Radarr to poll, so Mularr builds one. In **Extensions**, add a **Sonarr** or **Radarr** extension with the instance URL and API key: Mularr periodically searches for the titles in its **Wanted > Missing** list and publishes the matches in its Torznab feed.
