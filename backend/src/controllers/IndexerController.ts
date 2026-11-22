@@ -7,7 +7,7 @@ import { expandApostrophes, filterByEpisode, filterByFileKind, hoistMovieYear, w
 import { toImdbId, type ArrApp } from '../services/arrsync/ArrApiClient';
 import { arrSearchProvidersFor, isArrExtensionType, parseArrConfig } from '../services/arrsync/ArrSyncService';
 import { parseEd2kLink } from '../tools/eD2kTools';
-import { resultCategories, torznabAction, type TorznabSearchAction } from '../tools/torznabTools';
+import { isTorznabSearchAction, resultCategories, torznabAction, type TorznabSearchAction } from '../tools/torznabTools';
 import { LoggerFactory } from '../services/logging/Logger';
 
 /** What renderRss needs from a release. pubDate defaults to now (live search results). */
@@ -90,7 +90,10 @@ export class IndexerController {
 	handle = async (req: Request, res: Response) => {
 		const { t, q, season, ep, offset, limit, cat, imdbid, rid, director, year, artist, album } = req.query;
 
-		this.logger.info(`Action: ${t}, Query: ${q}, IMDB: ${imdbid}, Artist: ${artist}, Album: ${album}, Cat: ${cat}`);
+		// Behind Prowlarr every search arrives as t=search: the log says what it is read as (see torznabAction)
+		const action = isTorznabSearchAction(t) ? torznabAction(t, cat) : undefined;
+		const shownAction = action && action !== t ? `${t} (read as ${action})` : t;
+		this.logger.info(`Action: ${shownAction}, Query: ${q}, IMDB: ${imdbid}, Artist: ${artist}, Album: ${album}, Cat: ${cat}`);
 
 		const urlExtension = this.resolveUrlExtension(req);
 		if ('error' in urlExtension) {
@@ -102,10 +105,7 @@ export class IndexerController {
 			return this.getCapabilities(res);
 		}
 
-		if (t === 'search' || t === 'tvsearch' || t === 'movie' || t === 'music') {
-			const action = torznabAction(t, cat);
-			if (action !== t) this.logger.debug(`Plain search with categories ${cat} read as ${action}`);
-
+		if (action) {
 			// Music search (Lidarr): build the query from the structured
 			// artist/album params (Lidarr prefers them over free-text `q`).
 			// Values are trimmed and deduped case-insensitively, since
@@ -156,7 +156,8 @@ export class IndexerController {
 			}
 
 			try {
-				const results = await this.searchService.searchAndCollect({ query: queryStr, imdbId, providers });
+				// The next pages and the next episodes of a season reuse the search (see searchAndCollectReused)
+				const { value: results, startedAt, reused } = await this.searchService.searchAndCollectReused({ query: queryStr, imdbId, providers });
 
 				// eD2k shares single files, so the .nfo, artwork and subtitles next to a video match its title too.
 				// Dropped before paging, or they would take the places of real releases in the page.
@@ -172,8 +173,9 @@ export class IndexerController {
 				const size = parseInt(limit as string) || 100;
 				list = list.slice(start, start + size);
 
+				const reuseNote = reused ? `, from the same search ${Math.round((Date.now() - startedAt) / 1000)} s ago` : '';
 				this.logger.info(
-					`Returning ${list.length} results (offset: ${start}, limit: ${size}) for ${queryStr ? `query "${queryStr}"` : `IMDb id ${imdbId}`}`
+					`Returning ${list.length} results (offset: ${start}, limit: ${size}) for ${queryStr ? `query "${queryStr}"` : `IMDb id ${imdbId}`}${reuseNote}`
 				);
 
 				return this.renderRss(res, list, cat, action);

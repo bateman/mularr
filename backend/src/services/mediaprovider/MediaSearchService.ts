@@ -6,6 +6,7 @@ import { MediaProviderService } from './MediaProviderService';
 import type { IMediaProvider, MediaSearchResult, MediaSearchResponse, MediaSearchStatusResponse, ProviderSearch, SearchCriteria } from './types';
 import { LoggerFactory } from '../logging/Logger';
 import { sleep } from '../../tools/asyncTools';
+import { RecentResults, type RecentResult } from '../../tools/recentResults';
 
 /**
  * Polling parameters of searchAndCollect. Gather until the result set stops growing, not just until EC
@@ -26,6 +27,20 @@ const SEARCH_STABLE_POLLS = 3;
 const SEARCH_QUEUE_TIMEOUT_MS = 60000;
 /** Searches kept retrievable by id, most recent first; older ones are dropped with their results. */
 const MAX_KEPT_SEARCHES = 20;
+/**
+ * How long searchAndCollectReused hands out the results of a search again, from the moment they were collected.
+ * Long enough for the requests that follow one another (next pages, the next episodes of a season), short enough
+ * that a search asked for again later runs again and finds what was shared since.
+ */
+const SEARCH_REUSE_MS = 3 * 60 * 1000;
+/** Searches whose results searchAndCollectReused keeps at once, the oldest dropped first. */
+const MAX_REUSED_SEARCHES = 20;
+
+/** The results of a collected search, and whether every provider began it before SEARCH_QUEUE_TIMEOUT_MS. */
+interface CollectedSearch {
+	list: MediaSearchResult[];
+	complete: boolean;
+}
 
 /** A search across providers, with the handle each provider gave for it. */
 interface Search {
@@ -47,6 +62,11 @@ export class MediaSearchService {
 	private readonly providers = container.get(MediaProviderService).providers;
 	/** Kept searches by id, in start order (Map keeps insertion order). */
 	private readonly searches = new Map<string, Search>();
+	/**
+	 * Collected searches searchAndCollectReused hands out again. Empty ones are not kept (aMule not connected yet,
+	 * or nothing shared: worth asking again), nor those a provider still held in its queue when the wait ran out.
+	 */
+	private readonly reusable = new RecentResults<CollectedSearch>(SEARCH_REUSE_MS, MAX_REUSED_SEARCHES, (s) => s.complete && s.list.length > 0);
 
 	constructor() {
 		// A download is added by hash or link; the result it came from is only known here, so it is attached
@@ -182,10 +202,31 @@ export class MediaSearchService {
 	 * constants. Several callers may collect at once; each gets its own search's results.
 	 */
 	async searchAndCollect(criteria: SearchCriteria): Promise<MediaSearchResult[]> {
+		return (await this.collect(criteria)).list;
+	}
+
+	/**
+	 * searchAndCollect for the Torznab indexer, whose requests come in runs of the same search: the *arr ask for a
+	 * long result list one page at a time, and Sonarr searches a season one episode at a time with the same title
+	 * (the indexer filters by episode after the search). Each of them ran the whole eD2k search again, 13-15 s apiece,
+	 * and since a network search never returns quite the same list twice, a page could repeat or skip releases of
+	 * the page before. Now the results of a search with the same query, IMDb id and providers are handed out again
+	 * for SEARCH_REUSE_MS, and a request that arrives while the same search is running waits for it. The blacklist
+	 * is applied again on reuse, so an entry added in between is honoured.
+	 */
+	async searchAndCollectReused(criteria: SearchCriteria): Promise<RecentResult<MediaSearchResult[]>> {
+		const providers = criteria.providers ? [...criteria.providers].sort() : null;
+		const key = JSON.stringify([criteria.query, criteria.imdbId ?? null, providers, criteria.amuleSearchType ?? null]);
+		const { value, startedAt, reused } = await this.reusable.get(key, () => this.collect(criteria));
+		return { value: reused ? this.filterBlacklisted(value.list).visible : value.list, startedAt, reused };
+	}
+
+	private async collect(criteria: SearchCriteria): Promise<CollectedSearch> {
 		const search = this.getSearch(await this.startSearch(criteria));
-		if (await this.waitUntilStarted(search)) await this.waitUntilSettled(search);
+		const complete = await this.waitUntilStarted(search);
+		if (complete) await this.waitUntilSettled(search);
 		else this.logger.warn(`Search "${criteria.query}" still queued after ${SEARCH_QUEUE_TIMEOUT_MS / 1000} s; collecting what there is`);
-		return (await this.collectResults(search)).list;
+		return { list: (await this.collectResults(search)).list, complete };
 	}
 
 	/** True once no provider holds the search in its queue; false when SEARCH_QUEUE_TIMEOUT_MS passes first. */
